@@ -6,8 +6,34 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ENABLE_TUNNEL = process.env.ENABLE_TUNNEL === '1';
 
+// Simple Basic Auth for admin pages
+const ADMIN_USER = process.env.ADMIN_USER || 'sailendra126';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'Nani@1904';
+
+function requireBasicAuth(req, res, next) {
+  try {
+    const header = req.headers['authorization'] || '';
+    if (header.startsWith('Basic ')) {
+      const decoded = Buffer.from(header.split(' ')[1], 'base64').toString('utf8');
+      const idx = decoded.indexOf(':');
+      const user = decoded.slice(0, idx);
+      const pass = decoded.slice(idx + 1);
+      if (user === ADMIN_USER && pass === ADMIN_PASS) {
+        return next();
+      }
+    }
+  } catch {}
+  res.set('WWW-Authenticate', 'Basic realm="Admin", charset="UTF-8"');
+  return res.status(401).send('Authentication required');
+}
+
 // Middleware
 app.use(express.json({ limit: '100kb' }));
+
+// Protect dashboard explicitly
+app.get('/dashboard.html', requireBasicAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
 
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', extensions: ['html'] }));
@@ -66,7 +92,7 @@ app.post('/api/share', async (req, res) => {
 });
 
 // Admin: recent submissions (not authenticated; for demo use only)
-app.get('/admin/recent', (req, res) => {
+app.get('/admin/recent', requireBasicAuth, (req, res) => {
   try {
     const limit = Math.max(1, Math.min(2000, Number(req.query.limit) || 50));
     const page = Number(req.query.page) || null; // 1-based
@@ -95,7 +121,7 @@ app.get('/admin/recent', (req, res) => {
   }
 });
 
-app.get('/admin/count', (req, res) => {
+app.get('/admin/count', requireBasicAuth, (req, res) => {
   try {
     if (!fs.existsSync(storageFile)) return res.json({ total: 0 });
     const count = fs.readFileSync(storageFile, 'utf8').split('\n').filter(Boolean).length;
