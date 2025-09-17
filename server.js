@@ -147,6 +147,7 @@ app.post('/api/share', async (req, res) => {
       device: body.device || null,
       gps: body.gps || null,
       score: typeof body.score === 'number' ? body.score : null,
+      playerName: typeof body.playerName === 'string' ? body.playerName : null,
       userAgent: req.headers['user-agent'] || null,
       acceptLanguage: req.headers['accept-language'] || null
     };
