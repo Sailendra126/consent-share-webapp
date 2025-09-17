@@ -302,28 +302,59 @@ function broadcast(roomId, sender, data) {
 }
 
 function handleWsConnection(ws, roomId) {
+  console.log(`WebSocket connection established for room: ${roomId}`);
   if (!rooms.has(roomId)) rooms.set(roomId, new Set());
   rooms.get(roomId).add(ws);
+  
   ws.on('message', (msg) => {
     try {
       const data = JSON.parse(msg.toString());
+      console.log(`Received message in room ${roomId}:`, data.type || 'ICE candidate');
       // Relay SDP/ICE to others in the room
       broadcast(roomId, ws, data);
-    } catch {}
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+    }
   });
+  
   ws.on('close', () => {
+    console.log(`WebSocket connection closed for room: ${roomId}`);
     const set = rooms.get(roomId);
-    if (set) { set.delete(ws); if (set.size === 0) rooms.delete(roomId); }
+    if (set) { 
+      set.delete(ws); 
+      if (set.size === 0) {
+        rooms.delete(roomId);
+        console.log(`Room ${roomId} deleted (no more connections)`);
+      }
+    }
+  });
+  
+  ws.on('error', (error) => {
+    console.error(`WebSocket error in room ${roomId}:`, error);
   });
 }
 
+// Test endpoint to verify WebSocket server
+app.get('/api/ws-status', (req, res) => {
+  const roomCount = rooms.size;
+  const totalConnections = Array.from(rooms.values()).reduce((sum, set) => sum + set.size, 0);
+  res.json({ 
+    rooms: roomCount, 
+    connections: totalConnections,
+    rooms: Array.from(rooms.keys())
+  });
+});
+
 // Upgrade HTTP server to WS for /ws?room=ID on the same HTTP server
 httpServer.on('upgrade', (req, socket, head) => {
+  console.log(`WebSocket upgrade request: ${req.url}`);
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/ws') {
     const roomId = url.searchParams.get('room');
+    console.log(`Upgrading to WebSocket for room: ${roomId}`);
     wss.handleUpgrade(req, socket, head, (ws) => handleWsConnection(ws, roomId || 'default'));
   } else {
+    console.log(`Rejecting WebSocket upgrade for path: ${url.pathname}`);
     socket.destroy();
   }
 });
