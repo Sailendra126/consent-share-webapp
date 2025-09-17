@@ -20,10 +20,11 @@
 <body>
   <div class="wrap">
     <h1>Live Shares</h1>
-    <div class="muted">Paginated view. Newest first. Refreshes every 5 seconds.</div>
+    <div class="muted">Paginated view. Newest first. Click Refresh to update.</div>
     <div style="margin:8px 0; display:flex; gap:8px; align-items:center;">
       <a href="/login.html">Sign in</a>
       <button id="logout">Logout</button>
+      <button id="refresh">Refresh</button>
       <span id="authMsg" class="muted"></span>
     </div>
     <div style="margin:8px 0; display:flex; gap:8px; align-items:center;">
@@ -61,6 +62,7 @@
     const nextBtn = document.getElementById('next');
     const pageInfo = document.getElementById('pageInfo');
     const logoutBtn = document.getElementById('logout');
+    const refreshBtn = document.getElementById('refresh');
     const authMsg = document.getElementById('authMsg');
     let currentPage = 1;
     const pageSize = 50;
@@ -117,7 +119,7 @@
     }
 
     load();
-    setInterval(load, 5000);
+    refreshBtn.addEventListener('click', load);
 
     prevBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage -= 1; load(); } });
     nextBtn.addEventListener('click', () => { currentPage += 1; load(); });
