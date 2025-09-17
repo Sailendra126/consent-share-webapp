@@ -22,7 +22,6 @@
     <h1>Live Shares</h1>
     <div class="muted">Paginated view. Newest first. Click Refresh to update.</div>
     <div style="margin:8px 0; display:flex; gap:8px; align-items:center;">
-      <a href="/login.html">Sign in</a>
       <button id="logout">Logout</button>
       <button id="refresh">Refresh</button>
       <span id="authMsg" class="muted"></span>
@@ -53,6 +52,7 @@
         <tbody id="tbody"></tbody>
       </table>
     </div>
+    <div id="updated" class="muted">Updated: —</div>
   </div>
 
   <script>
@@ -64,6 +64,7 @@
     const logoutBtn = document.getElementById('logout');
     const refreshBtn = document.getElementById('refresh');
     const authMsg = document.getElementById('authMsg');
+    const updatedEl = document.getElementById('updated');
     let currentPage = 1;
     const pageSize = 50;
 
@@ -112,7 +113,10 @@
           const map = mapLink(r?.gps?.latitude, r?.gps?.longitude);
           return `<tr><td>${serial}</td><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${name}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td></tr>`;
         }).join('');
-        status.textContent = 'Live';
+        const newestTs = rows[0]?.receivedAtIso;
+        const stamp = newestTs ? new Date(newestTs).toLocaleString(undefined, { hour12: false, timeZoneName: 'short' }) : new Date().toLocaleString(undefined, { hour12: false, timeZoneName: 'short' });
+        updatedEl.textContent = `Updated: ${stamp}`;
+        status.textContent = '';
       } catch (e) {
         status.textContent = 'Failed to load';
       }
