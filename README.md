@@ -18,3 +18,14 @@ Notes:
 - GPS requires HTTPS in production and will prompt the user.
 - IP-based info is derived server-side from request IP (no external lookups by default).
 
+Deploy to Render (real HTTPS URL):
+
+1) Push the repo to GitHub.
+2) On Render, click New → Web Service → Select your repo.
+   - Environment: Node
+   - Build command: `npm install`
+   - Start command: `node server.js`
+   - Node version: 18+
+3) Or use the included `render.yaml` for auto-detect.
+4) After deploy, Render gives you a public `https://...onrender.com` URL.
+
