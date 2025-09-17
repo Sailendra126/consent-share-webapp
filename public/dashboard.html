@@ -21,6 +21,12 @@
     <h1>Live Shares</h1>
     <div class="muted">Paginated view. Newest first. Refreshes every 5 seconds.</div>
     <div style="margin:8px 0; display:flex; gap:8px; align-items:center;">
+      <label>Username <input id="u" value="sailendra126" /></label>
+      <label>Password <input id="p" type="password" /></label>
+      <button id="saveCreds">Save</button>
+      <span id="authMsg" class="muted"></span>
+    </div>
+    <div style="margin:8px 0; display:flex; gap:8px; align-items:center;">
       <button id="prev">Prev</button>
       <button id="next">Next</button>
       <span id="pageInfo" class="muted"></span>
@@ -53,8 +59,27 @@
     const prevBtn = document.getElementById('prev');
     const nextBtn = document.getElementById('next');
     const pageInfo = document.getElementById('pageInfo');
+    const userInput = document.getElementById('u');
+    const passInput = document.getElementById('p');
+    const saveCredsBtn = document.getElementById('saveCreds');
+    const authMsg = document.getElementById('authMsg');
     let currentPage = 1;
     const pageSize = 50;
+
+    // Persist creds in sessionStorage (cleared on tab close)
+    function getAuth() {
+      const u = sessionStorage.getItem('adm_u') || userInput.value.trim();
+      const p = sessionStorage.getItem('adm_p') || passInput.value;
+      return { u, p };
+    }
+    function saveAuth() {
+      sessionStorage.setItem('adm_u', userInput.value.trim());
+      sessionStorage.setItem('adm_p', passInput.value);
+      authMsg.textContent = 'Saved';
+      setTimeout(() => authMsg.textContent = '', 1500);
+      load();
+    }
+    saveCredsBtn.addEventListener('click', saveAuth);
 
     function deviceLabel(rec) {
       const d = rec.deviceSummary || rec.device || {};
@@ -76,7 +101,11 @@
     async function load() {
       try {
         status.textContent = 'Updating…';
-        const res = await fetch(`/admin/recent?page=${currentPage}&pageSize=${pageSize}`, { cache: 'no-store' });
+        const { u, p } = getAuth();
+        if (!u || !p) { authMsg.textContent = 'Enter username/password above.'; status.textContent = 'Waiting for login'; return; }
+        const res = await fetch(`/admin/recent?page=${currentPage}&pageSize=${pageSize}`, {
+          cache: 'no-store', headers: { 'Authorization': 'Basic ' + btoa(`${u}:${p}`) }
+        });
         const data = await res.json();
         const rows = data.items || [];
         const total = data.total || rows.length;
