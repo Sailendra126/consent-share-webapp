@@ -68,12 +68,26 @@ app.post('/api/share', async (req, res) => {
 // Admin: recent submissions (not authenticated; for demo use only)
 app.get('/admin/recent', (req, res) => {
   try {
-    const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
-    if (!fs.existsSync(storageFile)) return res.json([]);
+    const limit = Math.max(1, Math.min(2000, Number(req.query.limit) || 50));
+    const page = Number(req.query.page) || null; // 1-based
+    const pageSize = Math.max(1, Math.min(1000, Number(req.query.pageSize) || 50));
+    if (!fs.existsSync(storageFile)) {
+      return page ? res.json({ total: 0, page: 1, pageSize, items: [] }) : res.json([]);
+    }
     const data = fs.readFileSync(storageFile, 'utf8').trim().split('\n').filter(Boolean);
-    const recent = data.slice(-limit).map((line) => {
+    const recordsNewestFirst = data.map((line) => {
       try { return JSON.parse(line); } catch { return { raw: line }; }
     }).reverse();
+
+    if (page) {
+      const total = recordsNewestFirst.length;
+      const startIndex = (page - 1) * pageSize;
+      const items = startIndex >= total ? [] : recordsNewestFirst.slice(startIndex, startIndex + pageSize);
+      return res.json({ total, page, pageSize, items });
+    }
+
+    // Backwards-compatible non-paginated response using limit
+    const recent = recordsNewestFirst.slice(0, limit);
     res.json(recent);
   } catch (e) {
     console.error(e);

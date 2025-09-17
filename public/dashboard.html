@@ -19,13 +19,19 @@
 <body>
   <div class="wrap">
     <h1>Live Shares</h1>
-    <div class="muted">Showing up to the last 1000 submissions (newest first). Refreshes every 5 seconds.</div>
+    <div class="muted">Paginated view. Newest first. Refreshes every 5 seconds.</div>
+    <div style="margin:8px 0; display:flex; gap:8px; align-items:center;">
+      <button id="prev">Prev</button>
+      <button id="next">Next</button>
+      <span id="pageInfo" class="muted"></span>
+    </div>
     <div id="status" class="muted" style="margin-top:8px;">Loading…</div>
 
     <div class="panel">
       <table>
         <thead>
           <tr>
+            <th>#</th>
             <th>When</th>
             <th>Lat</th>
             <th>Lng</th>
@@ -44,6 +50,11 @@
   <script>
     const tbody = document.getElementById('tbody');
     const status = document.getElementById('status');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const pageInfo = document.getElementById('pageInfo');
+    let currentPage = 1;
+    const pageSize = 50;
 
     function deviceLabel(rec) {
       const d = rec.deviceSummary || rec.device || {};
@@ -65,9 +76,13 @@
     async function load() {
       try {
         status.textContent = 'Updating…';
-        const res = await fetch('/admin/recent?limit=1000', { cache: 'no-store' });
-        const rows = await res.json();
-        tbody.innerHTML = rows.map(r => {
+        const res = await fetch(`/admin/recent?page=${currentPage}&pageSize=${pageSize}`, { cache: 'no-store' });
+        const data = await res.json();
+        const rows = data.items || [];
+        const total = data.total || rows.length;
+        pageInfo.textContent = `Page ${currentPage} · ${rows.length} items · Total ${total}`;
+        tbody.innerHTML = rows.map((r, idx) => {
+          const serial = (currentPage - 1) * pageSize + idx + 1;
           const when = r.receivedAtIso ? new Date(r.receivedAtIso).toLocaleString(undefined, { hour12: false, timeZoneName: 'short' }) : '—';
           const lat = r.gps && typeof r.gps.latitude === 'number' ? r.gps.latitude.toFixed(6) : '—';
           const lng = r.gps && typeof r.gps.longitude === 'number' ? r.gps.longitude.toFixed(6) : '—';
@@ -76,7 +91,7 @@
           const ip = r.ip || '—';
           const page = r.page || '—';
           const map = mapLink(r?.gps?.latitude, r?.gps?.longitude);
-          return `<tr><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td></tr>`;
+          return `<tr><td>${serial}</td><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td></tr>`;
         }).join('');
         status.textContent = 'Live';
       } catch (e) {
@@ -86,6 +101,9 @@
 
     load();
     setInterval(load, 5000);
+
+    prevBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage -= 1; load(); } });
+    nextBtn.addEventListener('click', () => { currentPage += 1; load(); });
   </script>
 </body>
 </html>
