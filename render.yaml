@@ -10,4 +10,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 18
+    disk:
+      name: data
+      mountPath: storage
+      sizeGB: 1
 
