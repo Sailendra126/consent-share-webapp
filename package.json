@@ -1,0 +1,19 @@
+{
+  "name": "consent-share-webapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal consent-based web app to collect selected user data",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "localtunnel": "^2.0.2"
+  }
+}
