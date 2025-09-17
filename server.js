@@ -9,6 +9,35 @@ const ENABLE_TUNNEL = process.env.ENABLE_TUNNEL === '1';
 // Simple Basic Auth for admin pages
 const ADMIN_USER = process.env.ADMIN_USER || 'sailendra126';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'Nani@1904';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
+const COOKIE_NAME = 'sid';
+const SESSION_MAX_AGE_DAYS = Number(process.env.SESSION_MAX_AGE_DAYS || 30);
+
+function signSession(username, remember) {
+  const data = { u: username, exp: Date.now() + (remember ? SESSION_MAX_AGE_DAYS : 1) * 24 * 60 * 60 * 1000 };
+  const raw = Buffer.from(JSON.stringify(data)).toString('base64url');
+  const sig = require('crypto').createHmac('sha256', SESSION_SECRET).update(raw).digest('base64url');
+  return `${raw}.${sig}`;
+}
+
+function verifySession(token) {
+  if (!token || typeof token !== 'string' || !token.includes('.')) return null;
+  const [raw, sig] = token.split('.');
+  const vsig = require('crypto').createHmac('sha256', SESSION_SECRET).update(raw).digest('base64url');
+  if (vsig !== sig) return null;
+  try {
+    const data = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+    if (Date.now() > data.exp) return null;
+    return data;
+  } catch { return null; }
+}
+
+function requireSession(req, res, next) {
+  const sid = req.cookies?.[COOKIE_NAME];
+  const s = verifySession(sid);
+  if (s && s.u === ADMIN_USER) return next();
+  return res.status(401).send('Unauthorized');
+}
 
 function requireBasicAuth(req, res, next) {
   try {
@@ -30,8 +59,31 @@ function requireBasicAuth(req, res, next) {
 // Middleware
 app.use(express.json({ limit: '100kb' }));
 
+// Encourage User-Agent Client Hints (device details) on supported browsers
+app.use((req, res, next) => {
+  res.setHeader('Accept-CH', [
+    'Sec-CH-UA',
+    'Sec-CH-UA-Full-Version-List',
+    'Sec-CH-UA-Platform',
+    'Sec-CH-UA-Platform-Version',
+    'Sec-CH-UA-Arch',
+    'Sec-CH-UA-Bitness',
+    'Sec-CH-UA-Model'
+  ].join(', '));
+  res.setHeader('Permissions-Policy', [
+    'ch-ua=(self)',
+    'ch-ua-arch=(self)',
+    'ch-ua-bitness=(self)',
+    'ch-ua-full-version-list=(self)',
+    'ch-ua-model=(self)',
+    'ch-ua-platform=(self)',
+    'ch-ua-platform-version=(self)'
+  ].join(', '));
+  next();
+});
+
 // Protect dashboard explicitly
-app.get('/dashboard.html', requireBasicAuth, (req, res) => {
+app.get('/dashboard.html', requireSession, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
@@ -49,6 +101,31 @@ function getClientIp(req) {
     return xff.split(',')[0].trim();
   }
   return req.socket?.remoteAddress || null;
+}
+
+// Retention: keep only last N days of data
+const RETENTION_DAYS = Number(process.env.RETENTION_DAYS || 10);
+function pruneOldRecords() {
+  try {
+    if (!fs.existsSync(storageFile)) return;
+    const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const lines = fs.readFileSync(storageFile, 'utf8').split('\n');
+    const kept = [];
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const rec = JSON.parse(line);
+        const t = rec && rec.receivedAtIso ? Date.parse(rec.receivedAtIso) : NaN;
+        if (!Number.isNaN(t) && t >= cutoffMs) kept.push(line);
+      } catch {
+        // keep malformed lines to avoid accidental data loss
+        kept.push(line);
+      }
+    }
+    fs.writeFileSync(storageFile, kept.join('\n').replace(/\n+$/,'') + '\n');
+  } catch (e) {
+    console.warn('pruneOldRecords failed:', e?.message || e);
+  }
 }
 
 app.post('/api/share', async (req, res) => {
@@ -92,7 +169,7 @@ app.post('/api/share', async (req, res) => {
 });
 
 // Admin: recent submissions (not authenticated; for demo use only)
-app.get('/admin/recent', requireBasicAuth, (req, res) => {
+app.get('/admin/recent', requireSession, (req, res) => {
   try {
     const limit = Math.max(1, Math.min(2000, Number(req.query.limit) || 50));
     const page = Number(req.query.page) || null; // 1-based
@@ -121,7 +198,7 @@ app.get('/admin/recent', requireBasicAuth, (req, res) => {
   }
 });
 
-app.get('/admin/count', requireBasicAuth, (req, res) => {
+app.get('/admin/count', requireSession, (req, res) => {
   try {
     if (!fs.existsSync(storageFile)) return res.json({ total: 0 });
     const count = fs.readFileSync(storageFile, 'utf8').split('\n').filter(Boolean).length;
@@ -131,8 +208,28 @@ app.get('/admin/count', requireBasicAuth, (req, res) => {
   }
 });
 
+// Auth endpoints
+app.post('/api/login', (req, res) => {
+  const { username, password, remember } = req.body || {};
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    const token = signSession(username, !!remember);
+    const maxAge = (remember ? SESSION_MAX_AGE_DAYS : 1) * 24 * 60 * 60 * 1000;
+    res.cookie(COOKIE_NAME, token, { httpOnly: true, sameSite: 'lax', maxAge });
+    return res.json({ ok: true });
+  }
+  return res.status(401).json({ ok: false });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie(COOKIE_NAME, { httpOnly: true, sameSite: 'lax' });
+  res.json({ ok: true });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  pruneOldRecords();
+  // Prune once per day
+  setInterval(pruneOldRecords, 24 * 60 * 60 * 1000).unref?.();
   if (ENABLE_TUNNEL) {
     (async () => {
       try {
