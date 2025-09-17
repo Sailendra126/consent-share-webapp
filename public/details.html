@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Device Details</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1020; color: #e5f4ff; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 1.25rem; margin: 0 0 12px; }
+    button { padding: 10px 14px; font-size: 16px; border: 0; border-radius: 8px; background: #22d3ee; color: #021018; cursor: pointer; font-weight: 600; }
+    .panel { background: #141a2d; border: 1px solid #1f2a44; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: #9fb2cc; }
+  </style>
+  <meta name="color-scheme" content="light dark" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Device Details</h1>
+    <button id="go">Show device details</button>
+    <div class="panel">
+      <div id="device" class="mono">(pending)</div>
+    </div>
+    <div class="panel">
+      <h3>Notes</h3>
+      <div class="mono">SIM details and IMEI are not exposed to websites by browsers. They require a native mobile app with explicit OS permissions.</div>
+    </div>
+  </div>
+
+  <script>
+    const btn = document.getElementById('go');
+    const deviceEl = document.getElementById('device');
+    const fmt = (o) => JSON.stringify(o, null, 2);
+
+    function getDeviceInfo() {
+      const hints = navigator.userAgentData;
+      return {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        languages: navigator.languages,
+        platform: navigator.platform,
+        screen: { width: screen.width, height: screen.height, dpr: window.devicePixelRatio },
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(hints ? { brands: hints.brands, mobile: hints.mobile, platformHint: hints.platform } : {})
+      };
+    }
+
+    async function run() {
+      btn.disabled = true; deviceEl.textContent = 'Collecting...';
+      const device = getDeviceInfo();
+      deviceEl.textContent = fmt(device);
+      try {
+        await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent: { device: true, ip: true, gps: false }, device, page: 'details' }) });
+      } catch {}
+      btn.disabled = false;
+    }
+
+    btn.addEventListener('click', run);
+  </script>
+</body>
+</html>
+
+
