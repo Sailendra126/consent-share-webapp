@@ -113,9 +113,8 @@
           const map = mapLink(r?.gps?.latitude, r?.gps?.longitude);
           return `<tr><td>${serial}</td><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${name}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td></tr>`;
         }).join('');
-        const newestTs = rows[0]?.receivedAtIso;
-        const stamp = newestTs ? new Date(newestTs).toLocaleString(undefined, { hour12: false, timeZoneName: 'short' }) : new Date().toLocaleString(undefined, { hour12: false, timeZoneName: 'short' });
-        updatedEl.textContent = `Updated: ${stamp}`;
+        const stamp = new Date().toLocaleString(undefined, { hour12: false, timeZoneName: 'short' });
+        updatedEl.textContent = `Refreshed: ${stamp}`;
         status.textContent = '';
       } catch (e) {
         status.textContent = 'Failed to load';
