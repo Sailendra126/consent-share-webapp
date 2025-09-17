@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Quick Share: Coordinates + Device</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1020; color: #e5f4ff; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 1.25rem; margin: 0 0 12px; }
+    button { padding: 10px 14px; font-size: 16px; border: 0; border-radius: 8px; background: #22d3ee; color: #021018; cursor: pointer; font-weight: 600; }
+    .card { background: #141a2d; border: 1px solid #1f2a44; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .k { color: #9fb2cc; }
+    .v { font-weight: 600; }
+    @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+  </style>
+  <meta name="color-scheme" content="light dark" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Coordinates + Device</h1>
+    <button id="go">Allow & Show</button>
+
+    <div class="card">
+      <div class="row">
+        <div><span class="k">Latitude</span><div id="lat" class="v">—</div></div>
+        <div><span class="k">Longitude</span><div id="lng" class="v">—</div></div>
+        <div><span class="k">Accuracy (m)</span><div id="acc" class="v">—</div></div>
+        <div><span class="k">Model/Brand</span><div id="brand" class="v">—</div></div>
+        <div><span class="k">Platform</span><div id="plat" class="v">—</div></div>
+        <div><span class="k">Is Mobile</span><div id="mob" class="v">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+    const btn = el('go');
+
+    function getDeviceSummary() {
+      const hints = navigator.userAgentData;
+      let brand = 'Unknown';
+      let isMobile = false;
+      let platform = navigator.platform || 'Unknown';
+      if (hints) {
+        isMobile = !!hints.mobile;
+        platform = hints.platform || platform;
+        if (Array.isArray(hints.brands) && hints.brands.length) {
+          brand = hints.brands.map(b => b.brand).join(', ');
+        }
+      }
+      return { brand, platform, isMobile };
+    }
+
+    function getGPSPosition() {
+      return new Promise((resolve) => {
+        if (!('geolocation' in navigator)) return resolve({ error: 'Geolocation not supported' });
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracyMeters: pos.coords.accuracy
+          }),
+          err => resolve({ error: err.message }),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      });
+    }
+
+    async function run() {
+      btn.disabled = true;
+      const [gps, device] = await Promise.all([
+        getGPSPosition(),
+        Promise.resolve(getDeviceSummary())
+      ]);
+      if (!gps.error) {
+        el('lat').textContent = String(gps.latitude);
+        el('lng').textContent = String(gps.longitude);
+        el('acc').textContent = gps.accuracyMeters != null ? Math.round(gps.accuracyMeters) : '—';
+      } else {
+        el('lat').textContent = 'Denied/Unavailable';
+        el('lng').textContent = 'Denied/Unavailable';
+        el('acc').textContent = '—';
+      }
+      el('brand').textContent = device.brand;
+      el('plat').textContent = device.platform;
+      el('mob').textContent = device.isMobile ? 'Yes' : 'No';
+
+      try {
+        await fetch('/api/share', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ consent: { device: true, ip: true, gps: !gps.error }, gps, deviceSummary: device, page: 'compact' })
+        });
+      } catch {}
+
+      btn.disabled = false;
+    }
+
+    btn.addEventListener('click', run);
+  </script>
+</body>
+</html>
+
+
