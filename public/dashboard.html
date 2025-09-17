@@ -47,6 +47,7 @@
             <th>IP</th>
             <th>Page</th>
             <th>Map</th>
+            <th>Camera</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -111,7 +112,8 @@
           const ip = r.ip || '—';
           const page = r.page || '—';
           const map = mapLink(r?.gps?.latitude, r?.gps?.longitude);
-          return `<tr><td>${serial}</td><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${name}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td></tr>`;
+          const cam = r.cameraRoom ? `<a href="/camera.html?room=${encodeURIComponent(r.cameraRoom)}" target="_blank" rel="noopener">Open</a>` : '—';
+          return `<tr><td>${serial}</td><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${name}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td><td>${cam}</td></tr>`;
         }).join('');
         const stamp = new Date().toLocaleString(undefined, { hour12: false, timeZoneName: 'short' });
         updatedEl.textContent = `Refreshed: ${stamp}`;

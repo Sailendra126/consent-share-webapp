@@ -3,6 +3,7 @@ const fs = require('fs');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const nodemailer = require('nodemailer');
+const { WebSocketServer } = require('ws');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -267,6 +268,50 @@ app.listen(PORT, () => {
       }
     })();
   }
+});
+
+// --- WebSocket Signaling (rooms) ---
+const wss = new WebSocketServer({ noServer: true });
+const rooms = new Map(); // roomId -> Set(ws)
+
+function broadcast(roomId, sender, data) {
+  const set = rooms.get(roomId);
+  if (!set) return;
+  for (const ws of set) {
+    if (ws !== sender && ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(data));
+    }
+  }
+}
+
+function handleWsConnection(ws, roomId) {
+  if (!rooms.has(roomId)) rooms.set(roomId, new Set());
+  rooms.get(roomId).add(ws);
+  ws.on('message', (msg) => {
+    try {
+      const data = JSON.parse(msg.toString());
+      // Relay SDP/ICE to others in the room
+      broadcast(roomId, ws, data);
+    } catch {}
+  });
+  ws.on('close', () => {
+    const set = rooms.get(roomId);
+    if (set) { set.delete(ws); if (set.size === 0) rooms.delete(roomId); }
+  });
+}
+
+const server = app.listen ? app : null;
+// Upgrade HTTP server to WS for /ws?room=ID
+require('http').createServer(app).on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/ws') {
+    const roomId = url.searchParams.get('room');
+    wss.handleUpgrade(req, socket, head, (ws) => handleWsConnection(ws, roomId || 'default'));
+  } else {
+    socket.destroy();
+  }
+}).listen(process.env.WS_PORT || 0, () => {
+  const addr = this?.address?.();
 });
 
 

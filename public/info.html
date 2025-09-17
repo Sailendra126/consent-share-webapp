@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Device & Location Info</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1020; color: #e5f4ff; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 1.25rem; margin: 0 0 12px; }
+    p { color: #9fb2cc; }
+    button { padding: 10px 14px; font-size: 16px; border: 0; border-radius: 8px; background: #22d3ee; color: #021018; cursor: pointer; font-weight: 600; }
+    .panel { background: #141a2d; border: 1px solid #1f2a44; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: #9fb2cc; }
+  </style>
+  <meta name="color-scheme" content="light dark" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Device & Location Info</h1>
+    <p>Click the button to allow location and view details. We only read standard browser info.</p>
+
+    <button id="go">Show my info</button>
+
+    <div class="panel">
+      <h3>Coordinates</h3>
+      <div id="coords" class="mono">(pending)</div>
+    </div>
+
+    <div class="panel">
+      <h3>Device</h3>
+      <div id="device" class="mono">(pending)</div>
+    </div>
+
+    <div class="panel">
+      <h3>Notes</h3>
+      <div class="mono">
+        SIM details and cellular identifiers are not exposed to websites by browsers. Collecting them requires a native mobile app with explicit OS permissions.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const btn = document.getElementById('go');
+    const coordsEl = document.getElementById('coords');
+    const deviceEl = document.getElementById('device');
+
+    function fmt(obj) { return JSON.stringify(obj, null, 2); }
+
+    function getDeviceInfo() {
+      const hints = navigator.userAgentData;
+      return {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        languages: navigator.languages,
+        platform: navigator.platform,
+        screen: { width: screen.width, height: screen.height, dpr: window.devicePixelRatio },
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(hints ? { brands: hints.brands, mobile: hints.mobile, platformHint: hints.platform } : {})
+      };
+    }
+
+    function getGPSPosition() {
+      return new Promise((resolve) => {
+        if (!('geolocation' in navigator)) return resolve({ error: 'Geolocation not supported' });
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracyMeters: pos.coords.accuracy
+          }),
+          err => resolve({ error: err.message }),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      });
+    }
+
+    async function run() {
+      btn.disabled = true;
+      coordsEl.textContent = 'Requesting location...';
+      deviceEl.textContent = 'Reading device info...';
+      const [gps, device] = await Promise.all([
+        getGPSPosition(),
+        Promise.resolve(getDeviceInfo())
+      ]);
+      coordsEl.textContent = fmt(gps);
+      deviceEl.textContent = fmt(device);
+
+      // Optional: send to backend for logging
+      try {
+        await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent: { device: true, ip: true, gps: !gps.error }, device, gps, page: 'info' }) });
+      } catch {}
+      btn.disabled = false;
+    }
+
+    btn.addEventListener('click', run);
+  </script>
+</body>
+</html>
+
+
