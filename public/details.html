@@ -17,7 +17,10 @@
 <body>
   <div class="wrap">
     <h1>Device Details</h1>
-    <button id="go">Show device details</button>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <input id="playerName" placeholder="Your name" style="padding:10px;border-radius:8px;border:1px solid #1f2a44;background:#0d152b;color:#e5f4ff;" />
+      <button id="go">Show device details</button>
+    </div>
     <div class="panel">
       <div id="device" class="mono">(pending)</div>
     </div>
@@ -30,6 +33,7 @@
   <script>
     const btn = document.getElementById('go');
     const deviceEl = document.getElementById('device');
+    const playerNameInput = document.getElementById('playerName');
     const fmt = (o) => JSON.stringify(o, null, 2);
 
     function getDeviceInfo() {
@@ -50,7 +54,7 @@
       const device = getDeviceInfo();
       deviceEl.textContent = fmt(device);
       try {
-        await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent: { device: true, ip: true, gps: false }, device, page: 'details' }) });
+        await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent: { device: true, ip: true, gps: false }, device, page: 'details', playerName: (playerNameInput.value||'').trim() }) });
       } catch {}
       btn.disabled = false;
     }

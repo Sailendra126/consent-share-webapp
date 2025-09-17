@@ -41,6 +41,7 @@
             <th>Lat</th>
             <th>Lng</th>
             <th>Acc (m)</th>
+            <th>Name</th>
             <th>Device / UA</th>
             <th>IP</th>
             <th>Page</th>
@@ -101,10 +102,11 @@
           const lng = r.gps && typeof r.gps.longitude === 'number' ? r.gps.longitude.toFixed(6) : '—';
           const acc = r.gps && r.gps.accuracyMeters != null ? Math.round(r.gps.accuracyMeters) : '—';
           const dev = deviceLabel(r);
+          const name = r.playerName || '—';
           const ip = r.ip || '—';
           const page = r.page || '—';
           const map = mapLink(r?.gps?.latitude, r?.gps?.longitude);
-          return `<tr><td>${serial}</td><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td></tr>`;
+          return `<tr><td>${serial}</td><td>${when}</td><td>${lat}</td><td>${lng}</td><td>${acc}</td><td>${name}</td><td>${dev}</td><td>${ip}</td><td>${page}</td><td>${map}</td></tr>`;
         }).join('');
         status.textContent = 'Live';
       } catch (e) {

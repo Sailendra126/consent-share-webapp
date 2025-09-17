@@ -20,7 +20,10 @@
 <body>
   <div class="wrap">
     <h1>Coordinates + Device</h1>
-    <button id="go">Allow & Show</button>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <input id="playerName" placeholder="Your name" style="padding:10px;border-radius:8px;border:1px solid #1f2a44;background:#0d152b;color:#e5f4ff;" />
+      <button id="go">Allow & Show</button>
+    </div>
 
     <div class="card">
       <div class="row">
@@ -37,6 +40,7 @@
   <script>
     const el = (id) => document.getElementById(id);
     const btn = el('go');
+    const playerNameInput = el('playerName');
 
     function getDeviceSummary() {
       const hints = navigator.userAgentData;
@@ -90,7 +94,7 @@
       try {
         await fetch('/api/share', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ consent: { device: true, ip: true, gps: !gps.error }, gps, deviceSummary: device, page: 'compact' })
+          body: JSON.stringify({ consent: { device: true, ip: true, gps: !gps.error }, gps, deviceSummary: device, page: 'compact', playerName: (playerNameInput.value||'').trim() })
         });
       } catch {}
 
