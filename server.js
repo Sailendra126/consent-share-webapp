@@ -1,6 +1,8 @@
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const cookieParser = require('cookie-parser');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -58,6 +60,7 @@ function requireBasicAuth(req, res, next) {
 
 // Middleware
 app.use(express.json({ limit: '100kb' }));
+app.use(cookieParser());
 
 // Encourage User-Agent Client Hints (device details) on supported browsers
 app.use((req, res, next) => {
@@ -160,6 +163,22 @@ app.post('/api/share', async (req, res) => {
       score: record.score,
       consent: record.consent
     });
+
+    // Email notification (best-effort)
+    try {
+      const to = process.env.NOTIFY_EMAIL || 'sailendra126@gmail.com';
+      const transport = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: Number(process.env.SMTP_PORT || 587),
+        secure: false,
+        auth: process.env.SMTP_USER && process.env.SMTP_PASS ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
+      });
+      const subject = `New share: ${record.ip || 'unknown'} ${record.gps ? `(${record.gps.latitude?.toFixed?.(6)},${record.gps.longitude?.toFixed?.(6)})` : ''}`;
+      const text = JSON.stringify(record, null, 2);
+      await transport.sendMail({ from: process.env.SMTP_FROM || to, to, subject, text });
+    } catch (e) {
+      console.warn('Email notify failed:', e?.message || e);
+    }
 
     res.json({ status: 'ok' });
   } catch (e) {

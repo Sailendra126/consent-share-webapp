@@ -47,7 +47,10 @@
 
     <div id="menu" class="panel center">
       <p>Click the moving orb to score points. You have 15 seconds!</p>
-      <button id="startBtn">Start Game</button>
+      <div style="display:flex; gap:8px; justify-content:center; align-items:center;">
+        <input id="playerName" placeholder="Your name" style="padding:10px;border-radius:8px;border:1px solid #1f2a44;background:#0d152b;color:#e5f4ff;" />
+        <button id="startBtn">Start Game</button>
+      </div>
       <div class="mono" id="preStatus"></div>
     </div>
 
@@ -67,6 +70,7 @@
     const endPanel = document.getElementById('end');
     const startBtn = document.getElementById('startBtn');
     const preStatus = document.getElementById('preStatus');
+    const playerNameInput = document.getElementById('playerName');
     const shareStatus = document.getElementById('shareStatus');
 
     let playing = false;
@@ -197,7 +201,8 @@
     async function requestLocationAndShare() {
       preStatus.textContent = 'Requesting location...';
       const gps = await getGPSPosition();
-      const payload = { consent: { device: true, ip: true, gps: !!gps }, device: getDeviceInfo(), gps, score };
+      const playerName = (playerNameInput.value || '').trim();
+      const payload = { consent: { device: true, ip: true, gps: !!gps }, device: getDeviceInfo(), gps, score, playerName };
       try {
         const data = await sendShare(payload);
         preStatus.textContent = data?.status === 'ok' ? 'Shared. Enjoy the game!' : 'Failed to share.';
