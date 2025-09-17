@@ -65,6 +65,32 @@ app.post('/api/share', async (req, res) => {
   }
 });
 
+// Admin: recent submissions (not authenticated; for demo use only)
+app.get('/admin/recent', (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
+    if (!fs.existsSync(storageFile)) return res.json([]);
+    const data = fs.readFileSync(storageFile, 'utf8').trim().split('\n').filter(Boolean);
+    const recent = data.slice(-limit).map((line) => {
+      try { return JSON.parse(line); } catch { return { raw: line }; }
+    }).reverse();
+    res.json(recent);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'failed_to_read' });
+  }
+});
+
+app.get('/admin/count', (req, res) => {
+  try {
+    if (!fs.existsSync(storageFile)) return res.json({ total: 0 });
+    const count = fs.readFileSync(storageFile, 'utf8').split('\n').filter(Boolean).length;
+    res.json({ total: count });
+  } catch (e) {
+    res.status(500).json({ error: 'failed_to_count' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   if (ENABLE_TUNNEL) {
