@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store" />
   <title>Live Shares Dashboard</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1020; color: #e5f4ff; }
@@ -91,6 +92,7 @@
       try {
         status.textContent = 'Updating…';
         const res = await fetch(`/admin/recent?page=${currentPage}&pageSize=${pageSize}`, { cache: 'no-store' });
+        if (res.status === 401) { window.location.href = '/login.html'; return; }
         const data = await res.json();
         const rows = data.items || [];
         const total = data.total || rows.length;
