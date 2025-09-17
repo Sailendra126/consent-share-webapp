@@ -85,9 +85,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Protect dashboard explicitly
-app.get('/dashboard.html', requireSession, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+// Protect dashboard explicitly (redirect to login if not authenticated)
+app.get('/dashboard.html', (req, res, next) => {
+  const s = verifySession(req.cookies?.[COOKIE_NAME]);
+  if (!s || s.u !== ADMIN_USER) {
+    return res.redirect(302, '/login.html');
+  }
+  return res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
 // Serve static frontend
