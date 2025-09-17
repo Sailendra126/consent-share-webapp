@@ -12,6 +12,6 @@ services:
         value: 18
     disk:
       name: data
-      mountPath: storage
+      mountPath: /opt/render/project/src/storage
       sizeGB: 1
 
