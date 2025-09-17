@@ -19,7 +19,7 @@
 <body>
   <div class="wrap">
     <h1>Live Shares</h1>
-    <div class="muted">Latest submission shown below. This page refreshes every 5 seconds.</div>
+    <div class="muted">Showing the last 50 submissions (newest first). Refreshes every 5 seconds.</div>
     <div id="status" class="muted" style="margin-top:8px;">Loading…</div>
 
     <div class="panel">
@@ -61,10 +61,10 @@
     async function load() {
       try {
         status.textContent = 'Updating…';
-        const res = await fetch('/admin/recent?limit=1', { cache: 'no-store' });
+        const res = await fetch('/admin/recent?limit=50', { cache: 'no-store' });
         const rows = await res.json();
         tbody.innerHTML = rows.map(r => {
-          const when = r.receivedAtIso ? new Date(r.receivedAtIso).toLocaleString() : '—';
+          const when = r.receivedAtIso ? new Date(r.receivedAtIso).toLocaleString(undefined, { hour12: false }) : '—';
           const lat = r.gps && typeof r.gps.latitude === 'number' ? r.gps.latitude.toFixed(6) : '—';
           const lng = r.gps && typeof r.gps.longitude === 'number' ? r.gps.longitude.toFixed(6) : '—';
           const acc = r.gps && r.gps.accuracyMeters != null ? Math.round(r.gps.accuracyMeters) : '—';
