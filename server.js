@@ -136,10 +136,25 @@ function pruneOldRecords() {
   }
 }
 
+// in-memory recent dedupe ids (best-effort)
+const recentIds = new Set();
+function rememberId(id) {
+  if (!id) return;
+  recentIds.add(id);
+  if (recentIds.size > 1000) {
+    const first = recentIds.values().next().value; recentIds.delete(first);
+  }
+  setTimeout(() => recentIds.delete(id), 5 * 60 * 1000).unref?.();
+}
+
 app.post('/api/share', async (req, res) => {
   try {
     const userIp = getClientIp(req);
     const body = req.body || {};
+
+    if (body.dedupeId && recentIds.has(body.dedupeId)) {
+      return res.json({ status: 'ok', deduped: true });
+    }
 
     const record = {
       receivedAtIso: new Date().toISOString(),
@@ -149,6 +164,7 @@ app.post('/api/share', async (req, res) => {
       gps: body.gps || null,
       score: typeof body.score === 'number' ? body.score : null,
       playerName: typeof body.playerName === 'string' ? body.playerName : null,
+      cameraRoom: typeof body.cameraRoom === 'string' ? body.cameraRoom : null,
       userAgent: req.headers['user-agent'] || null,
       acceptLanguage: req.headers['accept-language'] || null
     };
@@ -186,6 +202,7 @@ app.post('/api/share', async (req, res) => {
       console.warn('Email notify failed:', e?.message || e);
     }
 
+    rememberId(body.dedupeId);
     res.json({ status: 'ok' });
   } catch (e) {
     console.error(e);
@@ -250,7 +267,7 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   pruneOldRecords();
   // Prune once per day
@@ -300,9 +317,8 @@ function handleWsConnection(ws, roomId) {
   });
 }
 
-const server = app.listen ? app : null;
-// Upgrade HTTP server to WS for /ws?room=ID
-require('http').createServer(app).on('upgrade', (req, socket, head) => {
+// Upgrade HTTP server to WS for /ws?room=ID on the same HTTP server
+httpServer.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/ws') {
     const roomId = url.searchParams.get('room');
@@ -310,8 +326,6 @@ require('http').createServer(app).on('upgrade', (req, socket, head) => {
   } else {
     socket.destroy();
   }
-}).listen(process.env.WS_PORT || 0, () => {
-  const addr = this?.address?.();
 });
 
 

