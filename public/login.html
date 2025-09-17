@@ -3,28 +3,57 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin Login</title>
+  <title>Sign in</title>
   <style>
-    body { margin:0; display:grid; place-items:center; min-height:100vh; background:#0b1020; color:#e5f4ff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-    .card { width:min(420px, 92vw); background:#141a2d; border:1px solid #1f2a44; border-radius:12px; padding:20px; }
-    label { display:block; margin:8px 0; }
-    input { width:100%; padding:10px; border-radius:8px; border:1px solid #1f2a44; background:#0d152b; color:#e5f4ff; }
-    button { width:100%; margin-top:12px; padding:12px; border:0; border-radius:8px; background:#22d3ee; color:#021018; font-weight:600; cursor:pointer; }
-    .muted { color:#9fb2cc; }
-    .row { display:flex; align-items:center; gap:8px; }
+    :root { --bg1: #e6f0ff; --bg2: #f7fbff; --card: #ffffff; --text: #0f172a; --muted:#6b7280; --primary:#111827; --accent:#111827; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color: var(--text);
+      background: radial-gradient(1200px 600px at 50% -300px, var(--bg1), var(--bg2));
+      display:grid; place-items:center; }
+    .card { width:min(480px, 92vw); background:var(--card); border-radius:18px; padding:28px; box-shadow: 0 20px 60px rgba(2,6,23,.15); border:1px solid #e5e7eb; }
+    .icon { width:52px; height:52px; display:grid; place-items:center; border-radius:14px; background:linear-gradient(180deg,#f3f6ff,#e8f0ff); border:1px solid #e2e8f0; margin:0 auto 12px; }
+    h2 { text-align:center; margin:0 0 6px; font-size:22px; }
+    .sub { text-align:center; color:var(--muted); font-size:14px; margin-bottom:16px; }
+    .field { position:relative; margin:10px 0; }
+    .field input { width:100%; padding:12px 12px 12px 40px; border-radius:12px; border:1px solid #e5e7eb; outline:none; background:#fff; color:var(--text); font-size:15px; }
+    .field svg { position:absolute; left:12px; top:50%; transform:translateY(-50%); width:18px; height:18px; color:#9ca3af; }
+    .row { display:flex; justify-content:space-between; align-items:center; margin-top:6px; }
+    .muted { color:var(--muted); font-size:13px; }
+    .link { color:#2563eb; text-decoration:none; font-size:13px; }
+    .btn { width:100%; margin-top:14px; padding:12px; border:0; border-radius:12px; background:var(--primary); color:#fff; font-weight:600; cursor:pointer; font-size:15px; }
+    .or { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; margin:14px 0; }
+    .or:before, .or:after { content:""; flex:1; height:1px; background:#e5e7eb; }
+    .sso { display:flex; gap:10px; }
+    .sso button { flex:1; padding:10px; border-radius:12px; border:1px solid #e5e7eb; background:#fff; cursor:pointer; }
+    #msg { text-align:center; margin-top:10px; font-size:13px; color:var(--muted); }
   </style>
 </head>
 <body>
   <div class="card">
-    <h2 style="margin:0 0 10px;">Admin Login</h2>
-    <div class="muted" style="margin-bottom:12px;">Only authorized user can access the dashboard.</div>
-    <label>Username <input id="u" autocomplete="username" value="sailendra126" /></label>
-    <label>Password <input id="p" type="password" autocomplete="current-password" /></label>
-    <div class="row">
-      <input id="remember" type="checkbox" /> <label for="remember" class="muted">Stay signed in</label>
+    <div class="icon">🔐</div>
+    <h2>Sign in with email</h2>
+    <div class="sub">Access your dashboard to view clicks and locations.</div>
+
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l8 6 8-6"/><rect x="4" y="6" width="16" height="12" rx="2"/></svg>
+      <input id="u" autocomplete="username" placeholder="Email or username" value="sailendra126" />
     </div>
-    <button id="loginBtn">Sign in</button>
-    <div id="msg" class="muted" style="margin-top:8px;"></div>
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 11a4 4 0 1 1 8 0v3"/></svg>
+      <input id="p" type="password" autocomplete="current-password" placeholder="Password" />
+    </div>
+    <div class="row">
+      <label class="muted"><input id="remember" type="checkbox" /> Stay signed in</label>
+      <a class="link" href="#" onclick="alert('Contact admin to reset.');return false;">Forgot password?</a>
+    </div>
+    <button id="loginBtn" class="btn">Get Started</button>
+    <div class="or">Or sign in with</div>
+    <div class="sso">
+      <button title="Google">G</button>
+      <button title="Facebook">f</button>
+      <button title="Apple"></button>
+    </div>
+    <div id="msg"></div>
   </div>
 
   <script>
