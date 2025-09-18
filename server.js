@@ -325,10 +325,12 @@ function handleWsConnection(ws, roomId) {
       // Forward video frames and location data to dashboard
       if (data.type === 'video_frame' || data.type === 'location') {
         broadcastToDashboard(data);
+        // Also broadcast to other viewers in the same room (for admin viewing specific rooms)
+        broadcast(roomId, ws, data);
+      } else {
+        // Relay SDP/ICE to others in the room
+        broadcast(roomId, ws, data);
       }
-      
-      // Relay SDP/ICE to others in the room
-      broadcast(roomId, ws, data);
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
     }

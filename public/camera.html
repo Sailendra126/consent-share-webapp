@@ -13,7 +13,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h2>Live Camera <span style="font-size: 0.6em; color: #9ca3af; font-weight: normal;">v1.1.05</span></h2>
+    <h2>Live Camera <span style="font-size: 0.6em; color: #9ca3af; font-weight: normal;">v1.1.06</span></h2>
     <div style="margin-bottom: 16px;">
       <button id="modeToggle" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
         Refresh Stream
@@ -750,10 +750,19 @@
       console.log('Is Mobile:', isMobileDevice());
       console.log('Is Dashboard Viewer:', isDashboardViewer());
       console.log('Force Streaming Param:', forceStreaming);
+      console.log('Room:', room);
       
-      // Always try to get camera if not in dashboard viewer mode
-      if (!isDashboardViewer() || forceStreaming) {
-        console.log('Attempting to get camera...');
+      // Check if this is a mobile device that should stream
+      const shouldStream = isMobileDevice() && !isDashboardViewer();
+      console.log('shouldStream:', shouldStream);
+      
+      // Check if this is a desktop admin viewing a specific room
+      const isAdminViewingRoom = !isMobileDevice() && room && room !== 'default';
+      console.log('isAdminViewingRoom:', isAdminViewingRoom);
+      
+      if (shouldStream || forceStreaming) {
+        // Mobile device - start streaming
+        console.log('Mobile device - attempting to get camera...');
         
         try {
           // Simple camera request
@@ -772,9 +781,9 @@
           // Wait for WebSocket and start streaming
           const waitForWebSocket = () => {
             if (ws && ws.readyState === WebSocket.OPEN) {
-              console.log('✅ WebSocket ready, starting simple streaming...');
+              console.log('✅ WebSocket ready, starting mobile streaming...');
               streamToDashboard(stream, 'front');
-              updateStatusDisplay('✅ Simple streaming active');
+              updateStatusDisplay('✅ Mobile streaming active');
             } else {
               console.log('⏳ WebSocket not ready, waiting...');
               setTimeout(waitForWebSocket, 500);
@@ -786,8 +795,17 @@
           console.error('❌ Camera access failed:', error);
           updateStatusDisplay('❌ Camera access denied: ' + error.message);
         }
+      } else if (isAdminViewingRoom) {
+        // Desktop admin viewing specific room - wait for remote streams
+        console.log('Admin viewing room:', room, '- waiting for mobile streams...');
+        updateStatusDisplay('✅ Waiting for mobile camera stream from room: ' + room.substring(0, 8) + '...');
+        
+        // The WebSocket will receive video frames from the mobile device
+        // and display them via handleRemoteVideoFrame()
+        
       } else {
-        console.log('Dashboard viewer mode - waiting for streams');
+        // Default desktop behavior - wait for any streams
+        console.log('Desktop viewer mode - waiting for streams...');
         updateStatusDisplay('✅ Waiting for camera streams...');
       }
     }
