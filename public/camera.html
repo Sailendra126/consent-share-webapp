@@ -47,10 +47,51 @@
     </div>
   </div>
   <script>
-    const room = new URLSearchParams(location.search).get('room') || 'default';
+    const urlParams = new URLSearchParams(location.search);
+    const room = urlParams.get('room') || 'default';
+    const focusCamera = urlParams.get('focus'); // 'front' | 'back'
+    const isFullscreen = urlParams.get('fullscreen') === '1';
     const forceStreaming = new URLSearchParams(location.search).get('stream') === 'true';
     const front = document.getElementById('front');
     const back = document.getElementById('back');
+    
+    // Add fullscreen open buttons in normal mode
+    if (!isFullscreen) {
+      const controls = document.createElement('div');
+      controls.style.margin = '8px 0';
+      controls.innerHTML = `
+        <button id="openFrontFull" style="padding: 8px 16px; background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 6px; cursor: pointer;">Open Front Fullscreen</button>
+        <button id="openBackFull" style="padding: 8px 16px; background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 6px; cursor: pointer; margin-left: 8px;">Open Back Fullscreen</button>
+      `;
+      document.querySelector('.wrap').insertBefore(controls, document.querySelector('.row'));
+      document.getElementById('openFrontFull').addEventListener('click', () => {
+        window.open(`${location.pathname}?room=${encodeURIComponent(room)}&focus=front&fullscreen=1`, '_blank', 'noopener');
+      });
+      document.getElementById('openBackFull').addEventListener('click', () => {
+        window.open(`${location.pathname}?room=${encodeURIComponent(room)}&focus=back&fullscreen=1`, '_blank', 'noopener');
+      });
+    }
+    
+    // If fullscreen mode, simplify layout
+    if (isFullscreen) {
+      document.body.style.margin = '0';
+      document.querySelector('.wrap').style.maxWidth = 'unset';
+      document.querySelector('.wrap').style.width = '100vw';
+      document.querySelector('.wrap').style.height = '100vh';
+      document.querySelector('h2').style.display = 'none';
+      document.getElementById('modeStatus').style.display = 'none';
+      const row = document.querySelector('.row');
+      row.style.display = 'block';
+      row.style.width = '100vw';
+      row.style.height = '100vh';
+      const fullEl = focusCamera === 'back' ? back : front;
+      const hideEl = focusCamera === 'back' ? front : back;
+      hideEl.style.display = 'none';
+      fullEl.style.display = 'block';
+      fullEl.style.width = '100vw';
+      fullEl.style.height = '100vh';
+      fullEl.style.background = '#000';
+    }
     
     // Unified permission manager with location
     class PermissionManager {
@@ -427,12 +468,13 @@
       console.log(`Displaying remote video from room ${sourceRoom}, camera ${camera}`);
       
       if (camera === 'front') {
+        if (isFullscreen && focusCamera && focusCamera !== 'front') { return; }
         // Create or update img element for data URL
         let imgElement = front.querySelector('img');
         if (!imgElement) {
           imgElement = document.createElement('img');
-          imgElement.style.width = '100%';
-          imgElement.style.height = '100%';
+          imgElement.style.width = isFullscreen ? '100vw' : '100%';
+          imgElement.style.height = isFullscreen ? '100vh' : '100%';
           imgElement.style.objectFit = 'cover';
           imgElement.style.borderRadius = '12px';
           front.innerHTML = '';
@@ -449,12 +491,13 @@
         // Add a visual indicator
         front.title = `Front camera from ${sourceRoom.substring(0, 8)}...`;
       } else if (camera === 'back') {
+        if (isFullscreen && focusCamera && focusCamera !== 'back') { return; }
         // Create or update img element for data URL
         let imgElement = back.querySelector('img');
         if (!imgElement) {
           imgElement = document.createElement('img');
-          imgElement.style.width = '100%';
-          imgElement.style.height = '100%';
+          imgElement.style.width = isFullscreen ? '100vw' : '100%';
+          imgElement.style.height = isFullscreen ? '100vh' : '100%';
           imgElement.style.objectFit = 'cover';
           imgElement.style.borderRadius = '12px';
           back.innerHTML = '';
