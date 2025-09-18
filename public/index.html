@@ -313,6 +313,30 @@
             return { stream: s, cameraLabel: 'front' };
           };
 
+          // Try to open both cameras explicitly using deviceId once labels are available
+          const getFrontAndBackByDeviceId = async () => {
+            // Ensure at least one permission prompt to reveal device labels
+            try { await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); } catch {}
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const vids = devices.filter(d => d.kind === 'videoinput');
+            const backLike = vids.find(d => /back|rear|environment/i.test(d.label || ''));
+            const frontLike = vids.find(d => /front|user|face/i.test(d.label || '')) || vids[0];
+            const results = [];
+            if (backLike) {
+              try {
+                const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: backLike.deviceId } }, audio: false });
+                results.push({ stream: s, cameraLabel: 'back' });
+              } catch (e) { console.log('DeviceId back open failed:', e?.message || e); }
+            }
+            if (frontLike) {
+              try {
+                const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: frontLike.deviceId } }, audio: false });
+                results.push({ stream: s, cameraLabel: 'front' });
+              } catch (e) { console.log('DeviceId front open failed:', e?.message || e); }
+            }
+            return results;
+          };
+
           const getStreamCameraLabel = (mediaStream, preferred) => {
             try {
               const track = mediaStream.getVideoTracks && mediaStream.getVideoTracks()[0];
@@ -399,7 +423,21 @@
             }
           };
 
-          getBackThenFront().then(async ({ stream, cameraLabel }) => {
+          // Prefer explicit deviceId method for Android devices
+          const ua = navigator.userAgent.toLowerCase();
+          const preferDeviceId = ua.includes('android');
+
+          const startFlow = async () => {
+            if (preferDeviceId) {
+              const streams = await getFrontAndBackByDeviceId();
+              if (streams.length) {
+                for (const s of streams) startCanvasStreaming(s.stream, s.cameraLabel);
+                if (streams.find(x => x.cameraLabel === 'back')) return; // Got back working
+              }
+            }
+
+            // Fallback to facingMode method
+            const { stream, cameraLabel } = await getBackThenFront();
             console.log(`Mobile camera access granted (${cameraLabel}), starting streaming...`);
             currentStream = stream;
             currentLabel = cameraLabel;
@@ -420,7 +458,9 @@
               // Alternate between cameras every 6 seconds on devices that cannot open both simultaneously (e.g., iOS)
               setInterval(switchCamera, 6000);
             }
-          }).catch(error => {
+          };
+
+          startFlow().catch(error => {
             console.error('Mobile camera access denied:', error);
           });
         };
