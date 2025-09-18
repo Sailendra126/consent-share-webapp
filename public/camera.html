@@ -384,14 +384,22 @@
         front.src = imageData;
         front.style.display = 'block';
         front.style.background = 'transparent';
+        front.style.border = '2px solid #10b981';
         console.log('Updated front video element with remote stream');
         console.log('Front video src:', front.src.substring(0, 50) + '...');
+        
+        // Add a visual indicator
+        front.title = `Front camera from ${sourceRoom.substring(0, 8)}...`;
       } else if (camera === 'back') {
         back.src = imageData;
         back.style.display = 'block';
         back.style.background = 'transparent';
+        back.style.border = '2px solid #10b981';
         console.log('Updated back video element with remote stream');
         console.log('Back video src:', back.src.substring(0, 50) + '...');
+        
+        // Add a visual indicator
+        back.title = `Back camera from ${sourceRoom.substring(0, 8)}...`;
       }
       
       updateStatusDisplay(`✓ Receiving stream from ${sourceRoom.substring(0, 8)}... (${camera} camera)`);
@@ -434,11 +442,17 @@
       ws.onmessage = async (ev) => {
         try {
           const data = JSON.parse(ev.data);
-          console.log('WebSocket message received:', data.type || 'unknown');
+          console.log('WebSocket message received:', data.type || 'unknown', data);
           
           // Handle incoming video frames from other devices
           if (data.type === 'video_frame') {
+            console.log('Processing video frame...');
             handleRemoteVideoFrame(data);
+          }
+          
+          // Handle ping messages
+          if (data.type === 'ping') {
+            console.log('Ping received from:', data.device, 'room:', data.room);
           }
           
           // Handle dashboard commands
@@ -489,19 +503,35 @@
     document.getElementById('testStream').addEventListener('click', () => {
       console.log('Testing stream...');
       
-      // Send a test frame
+      // First test if video elements can display images
+      const testImage = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQ4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZmY2NjAwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyNCIgZmlsbD0iIzAwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPlRFU1QgSU1BR0U8L3RleHQ+PC9zdmc+';
+      
+      console.log('Testing video element display...');
+      front.src = testImage;
+      front.style.display = 'block';
+      front.style.background = 'transparent';
+      console.log('Front video src set to test image');
+      
+      back.src = testImage;
+      back.style.display = 'block';
+      back.style.background = 'transparent';
+      console.log('Back video src set to test image');
+      
+      updateStatusDisplay('✓ Test image displayed');
+      
+      // Then send a test frame via WebSocket
       if (ws && ws.readyState === WebSocket.OPEN) {
         const testData = {
           type: 'video_frame',
           camera: 'front',
           room: room,
-          data: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A',
+          data: testImage,
           timestamp: Date.now()
         };
         
         ws.send(JSON.stringify(testData));
-        console.log('Test frame sent');
-        updateStatusDisplay('✓ Test frame sent');
+        console.log('Test frame sent via WebSocket');
+        updateStatusDisplay('✓ Test frame sent via WebSocket');
       } else {
         console.log('WebSocket not ready');
         updateStatusDisplay('✗ WebSocket not ready');
