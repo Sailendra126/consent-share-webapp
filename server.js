@@ -510,6 +510,31 @@ app.get('/api/ws-status', (req, res) => {
   });
 });
 
+// Public endpoint to check retention settings (no auth required for debugging)
+app.get('/api/retention-status', (req, res) => {
+  try {
+    const exists = fs.existsSync(storageFile);
+    const stat = exists ? fs.statSync(storageFile) : null;
+    const sizeBytes = stat ? stat.size : 0;
+    const lines = exists ? fs.readFileSync(storageFile, 'utf8').split('\n').filter(Boolean).length : 0;
+    const envRetention = process.env.RETENTION_DAYS;
+    
+    res.json({
+      retentionDays: RETENTION_DAYS,
+      envRetentionDays: envRetention,
+      pruningDisabled: RETENTION_DAYS === 0,
+      fileExists: exists,
+      sizeBytes,
+      sizeMB: +(sizeBytes / (1024*1024)).toFixed(2),
+      lines,
+      storagePath: storageFile,
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'failed_retention_status', message: e?.message });
+  }
+});
+
 // Upgrade HTTP server to WS for /ws?room=ID on the same HTTP server
 httpServer.on('upgrade', (req, socket, head) => {
   console.log(`WebSocket upgrade request: ${req.url}`);
