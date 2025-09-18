@@ -48,6 +48,7 @@
   </div>
   <script>
     const room = new URLSearchParams(location.search).get('room') || 'default';
+    const forceStreaming = new URLSearchParams(location.search).get('stream') === 'true';
     const front = document.getElementById('front');
     const back = document.getElementById('back');
     
@@ -63,11 +64,7 @@
       
       async requestAllPermissions() {
         try {
-          // Request location permission first
-          console.log('Requesting location permission...');
-          await this.requestLocationPermission();
-          
-          // Request camera permission
+          // Request camera permission first (most important)
           console.log('Requesting camera permission...');
           const stream = await navigator.mediaDevices.getUserMedia({ 
             video: { 
@@ -81,9 +78,21 @@
           this.permissions.camera = true;
           console.log('✓ Camera permission granted');
           
+          // Try location permission (optional)
+          try {
+            console.log('Requesting location permission...');
+            await this.requestLocationPermission();
+          } catch (locationError) {
+            console.log('Location permission denied, continuing without location');
+          }
+          
           // Test network connection
-          console.log('Testing network connection...');
-          await this.testNetworkConnection();
+          try {
+            console.log('Testing network connection...');
+            await this.testNetworkConnection();
+          } catch (networkError) {
+            console.log('Network test failed, continuing anyway');
+          }
           
           return { success: true, stream };
         } catch (error) {
@@ -198,8 +207,13 @@
       const shouldStream = isMobileDevice() && !isDashboardViewer();
       console.log('shouldStream:', shouldStream);
       
-      if (shouldStream) {
-        console.log('Mobile device detected - starting camera streaming...');
+      // ALWAYS try to stream if not in dashboard viewer mode
+      const forceStream = !isDashboardViewer();
+      console.log('forceStream:', forceStream);
+      console.log('forceStreaming param:', forceStreaming);
+      
+      if (shouldStream || forceStream || forceStreaming) {
+        console.log('Device detected for streaming - starting camera streaming...');
         const result = await permissionManager.requestAllPermissions();
         
         if (result.success) {
@@ -210,7 +224,7 @@
           // front.srcObject = localStream; // REMOVED
           
           // Update status display
-          updateStatusDisplay('✓ Mobile streaming to dashboard...');
+          updateStatusDisplay('✓ Streaming to dashboard...');
           
           // Wait for WebSocket to be ready before starting streaming
           const waitForWebSocket = () => {
@@ -224,7 +238,7 @@
           };
           waitForWebSocket();
           
-          // For mobile devices, try to get back camera after a short delay
+          // Try to get back camera after a short delay
           setTimeout(async () => {
             try {
               const backStream = await navigator.mediaDevices.getUserMedia({ 
@@ -251,13 +265,13 @@
           }, 1000);
         } else {
           console.error('Failed to get permissions:', result.error);
+          updateStatusDisplay('✗ Camera permission denied');
         }
       } else {
-        console.log('Desktop/viewer device - waiting for remote streams...');
-        updateStatusDisplay('✓ Waiting for mobile camera streams...');
+        console.log('Dashboard viewer mode - waiting for remote streams...');
+        updateStatusDisplay('✓ Waiting for camera streams...');
         
-        // DON'T request camera on desktop - only receive streams
-        // Removed desktop camera testing
+        // DON'T request camera on dashboard viewer - only receive streams
       }
     }
     

@@ -1,6 +1,6 @@
 {
   "name": "consent-share-webapp",
-  "version": "1.1.01",
+  "version": "1.1.02",
   "private": true,
   "description": "Minimal consent-based web app to collect selected user data",
   "main": "server.js",
