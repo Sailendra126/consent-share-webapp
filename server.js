@@ -112,30 +112,99 @@ function getClientIp(req) {
 }
 
 // Retention: keep only last N days of data
-// Defaults to ~10 years. Set RETENTION_DAYS=0 to disable pruning.
-const RETENTION_DAYS = process.env.RETENTION_DAYS === '0' ? 0 : Number(process.env.RETENTION_DAYS || 3650);
-function pruneOldRecords() {
-  if (!RETENTION_DAYS || RETENTION_DAYS <= 0) {
-    // Pruning disabled
-    return;
-  }
+// Defaults to 100 years. Set RETENTION_DAYS=0 to disable pruning.
+const RETENTION_DAYS = process.env.RETENTION_DAYS === '0' ? 0 : Number(process.env.RETENTION_DAYS || 36500);
+
+// Backup function to create backups before pruning
+function createBackup() {
   try {
     if (!fs.existsSync(storageFile)) return;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile = path.join(storageDir, `data-backup-${timestamp}.jsonl`);
+    fs.copyFileSync(storageFile, backupFile);
+    console.log(`Backup created: ${backupFile}`);
+    
+    // Keep only last 20 backups to prevent disk bloat while maintaining safety
+    const backupFiles = fs.readdirSync(storageDir)
+      .filter(f => f.startsWith('data-backup-') && f.endsWith('.jsonl'))
+      .map(f => ({ name: f, path: path.join(storageDir, f), mtime: fs.statSync(path.join(storageDir, f)).mtime }))
+      .sort((a, b) => b.mtime - a.mtime);
+    
+    // Remove old backups (keep only 20 most recent)
+    for (let i = 20; i < backupFiles.length; i++) {
+      try {
+        fs.unlinkSync(backupFiles[i].path);
+        console.log(`Removed old backup: ${backupFiles[i].name}`);
+      } catch (e) {
+        console.warn(`Failed to remove old backup ${backupFiles[i].name}:`, e?.message);
+      }
+    }
+  } catch (e) {
+    console.warn('createBackup failed:', e?.message || e);
+  }
+}
+
+function pruneOldRecords() {
+  if (!RETENTION_DAYS || RETENTION_DAYS <= 0) {
+    console.log('Data pruning disabled (RETENTION_DAYS=0)');
+    return;
+  }
+  
+  // Extra safety: if retention is very long (>10 years), add additional checks
+  if (RETENTION_DAYS > 3650) {
+    console.log(`LONG-TERM RETENTION: ${RETENTION_DAYS} days (${Math.round(RETENTION_DAYS/365.25)} years) - Extra safety measures active`);
+  }
+  
+  try {
+    if (!fs.existsSync(storageFile)) {
+      console.log('No storage file found, skipping pruning');
+      return;
+    }
+    
     const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const cutoffDate = new Date(cutoffMs).toISOString();
+    console.log(`Starting data pruning with ${RETENTION_DAYS} days retention (cutoff: ${cutoffDate})`);
+    
+    // Create backup before pruning
+    createBackup();
+    
     const lines = fs.readFileSync(storageFile, 'utf8').split('\n');
     const kept = [];
+    let prunedCount = 0;
+    
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
         const rec = JSON.parse(line);
         const t = rec && rec.receivedAtIso ? Date.parse(rec.receivedAtIso) : NaN;
-        if (!Number.isNaN(t) && t >= cutoffMs) kept.push(line);
+        if (!Number.isNaN(t) && t >= cutoffMs) {
+          kept.push(line);
+        } else {
+          prunedCount++;
+          // Extra logging for long-term retention
+          if (RETENTION_DAYS > 3650) {
+            const recordDate = new Date(t).toISOString();
+            console.log(`Would prune record from: ${recordDate}`);
+          }
+        }
       } catch {
         // keep malformed lines to avoid accidental data loss
         kept.push(line);
       }
     }
-    fs.writeFileSync(storageFile, kept.join('\n').replace(/\n+$/,'') + '\n');
+    
+    // Safety check: don't prune if it would remove more than 50% of data for long-term retention
+    if (RETENTION_DAYS > 3650 && prunedCount > kept.length) {
+      console.warn(`SAFETY ABORT: Would prune ${prunedCount} records but only keep ${kept.length}. This seems excessive for long-term retention. Skipping pruning.`);
+      return;
+    }
+    
+    if (prunedCount > 0) {
+      fs.writeFileSync(storageFile, kept.join('\n').replace(/\n+$/,'') + '\n');
+      console.log(`Data pruning completed: ${prunedCount} records removed, ${kept.length} records retained`);
+    } else {
+      console.log('No records needed pruning - all data is within retention period');
+    }
   } catch (e) {
     console.warn('pruneOldRecords failed:', e?.message || e);
   }
@@ -255,6 +324,41 @@ app.get('/admin/count', requireSession, (req, res) => {
   }
 });
 
+// Manual backup endpoint for extra safety
+app.post('/admin/backup', requireSession, (req, res) => {
+  try {
+    createBackup();
+    res.json({ status: 'ok', message: 'Backup created successfully' });
+  } catch (e) {
+    console.error('Manual backup failed:', e);
+    res.status(500).json({ error: 'backup_failed', message: e?.message || 'Unknown error' });
+  }
+});
+
+// Backup status endpoint
+app.get('/admin/backups', requireSession, (req, res) => {
+  try {
+    if (!fs.existsSync(storageDir)) {
+      return res.json({ backups: [], count: 0 });
+    }
+    const backupFiles = fs.readdirSync(storageDir)
+      .filter(f => f.startsWith('data-backup-') && f.endsWith('.jsonl'))
+      .map(f => {
+        const stat = fs.statSync(path.join(storageDir, f));
+        return { 
+          name: f, 
+          created: stat.mtime.toISOString(),
+          size: stat.size 
+        };
+      })
+      .sort((a, b) => new Date(b.created) - new Date(a.created));
+    
+    res.json({ backups: backupFiles, count: backupFiles.length });
+  } catch (e) {
+    res.status(500).json({ error: 'failed_to_list_backups' });
+  }
+});
+
 // Auth endpoints
 app.post('/api/login', (req, res) => {
   const { username, password, remember } = req.body || {};
@@ -274,6 +378,30 @@ app.post('/api/logout', (req, res) => {
 
 const httpServer = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Storage directory: ${storageDir}`);
+  console.log(`Storage file: ${storageFile}`);
+  console.log(`Data retention: ${RETENTION_DAYS === 0 ? 'DISABLED (data will never be automatically deleted)' : `${RETENTION_DAYS} days`}`);
+  
+  // Check if storage directory exists and is writable
+  try {
+    fs.accessSync(storageDir, fs.constants.W_OK);
+    console.log('Storage directory is writable');
+  } catch (e) {
+    console.error('Storage directory is not writable:', e?.message);
+  }
+  
+  // Show current data count if file exists
+  try {
+    if (fs.existsSync(storageFile)) {
+      const count = fs.readFileSync(storageFile, 'utf8').split('\n').filter(Boolean).length;
+      console.log(`Current data records: ${count}`);
+    } else {
+      console.log('No existing data file found');
+    }
+  } catch (e) {
+    console.warn('Could not read data file:', e?.message);
+  }
+  
   pruneOldRecords();
   // Prune once per day
   setInterval(pruneOldRecords, 24 * 60 * 60 * 1000).unref?.();
