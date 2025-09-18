@@ -313,7 +313,22 @@
             return { stream: s, cameraLabel: 'front' };
           };
 
-          const startCanvasStreaming = (mediaStream, label) => {
+          const getStreamCameraLabel = (mediaStream, preferred) => {
+            try {
+              const track = mediaStream.getVideoTracks && mediaStream.getVideoTracks()[0];
+              const settings = track && track.getSettings ? track.getSettings() : {};
+              const fm = (settings.facingMode || '').toString().toLowerCase();
+              if (fm.includes('environment') || fm.includes('rear') || fm.includes('back')) return 'back';
+              if (fm.includes('user') || fm.includes('front')) return 'front';
+              const label = (track && track.label ? track.label : '').toLowerCase();
+              if (/back|rear|environment/.test(label)) return 'back';
+              if (/front|user|face/.test(label)) return 'front';
+            } catch {}
+            return preferred || 'front';
+          };
+
+          const startCanvasStreaming = (mediaStream, initialLabel) => {
+            const label = getStreamCameraLabel(mediaStream, initialLabel);
             // Create canvas to capture video frames
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -371,7 +386,7 @@
             try {
               const nextFacing = currentLabel === 'back' ? 'user' : 'environment';
               const s = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                video: { facingMode: currentLabel === 'back' ? { exact: 'user' } : { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false
               });
               currentLabel = currentLabel === 'back' ? 'front' : 'back';
