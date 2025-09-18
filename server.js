@@ -122,8 +122,8 @@ function getClientIp(req) {
 }
 
 // Retention: keep only last N days of data
-// Defaults to 100 years. Set RETENTION_DAYS=0 to disable pruning.
-const RETENTION_DAYS = process.env.RETENTION_DAYS === '0' ? 0 : Number(process.env.RETENTION_DAYS || 36500);
+// Defaults to DISABLED (0). Set RETENTION_DAYS to a number to enable pruning.
+const RETENTION_DAYS = process.env.RETENTION_DAYS === '0' ? 0 : Number(process.env.RETENTION_DAYS || 0);
 
 // Backup function to create backups before pruning
 function createBackup() {
