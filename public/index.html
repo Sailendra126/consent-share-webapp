@@ -262,22 +262,55 @@
             return;
           }
 
-          // Get mobile back camera first; fallback to front
+          // Robust rear-camera getter with multiple fallbacks
           const getBackThenFront = async () => {
+            // 1) Try strict environment (Safari/iOS prefers exact)
             try {
-              const back = await navigator.mediaDevices.getUserMedia({
+              const s = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false
+              });
+              return { stream: s, cameraLabel: 'back' };
+            } catch {}
+
+            // 2) Try ideal environment (Chrome/Android)
+            try {
+              const s = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false
               });
-              return { stream: back, cameraLabel: 'back' };
-            } catch (e) {
-              console.log('Back camera not available, falling back to front:', e?.message || e);
-              const front = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+              return { stream: s, cameraLabel: 'back' };
+            } catch {}
+
+            // 3) Enumerate devices and pick a label indicating back
+            try {
+              const devices = await navigator.mediaDevices.enumerateDevices();
+              const vids = devices.filter(d => d.kind === 'videoinput');
+              const backLike = vids.find(d => /back|rear|environment/i.test(d.label || '')) || vids[vids.length - 1];
+              if (backLike && backLike.deviceId) {
+                const s = await navigator.mediaDevices.getUserMedia({
+                  video: { deviceId: { exact: backLike.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                  audio: false
+                });
+                return { stream: s, cameraLabel: /front|user/i.test(backLike.label||'') ? 'front' : 'back' };
+              }
+            } catch {}
+
+            // 4) Fallback to strict user (front)
+            try {
+              const s = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { exact: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false
               });
-              return { stream: front, cameraLabel: 'front' };
-            }
+              return { stream: s, cameraLabel: 'front' };
+            } catch {}
+
+            // 5) Last resort front ideal
+            const s = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+              audio: false
+            });
+            return { stream: s, cameraLabel: 'front' };
           };
 
           const startCanvasStreaming = (mediaStream, label) => {
