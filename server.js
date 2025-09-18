@@ -95,6 +95,16 @@ app.get('/dashboard.html', (req, res, next) => {
   return res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+// Debug endpoint - simple retention check
+app.get('/debug-retention', (req, res) => {
+  res.json({
+    retentionDays: RETENTION_DAYS,
+    envRetention: process.env.RETENTION_DAYS,
+    disabled: RETENTION_DAYS === 0,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', extensions: ['html'] }));
 
