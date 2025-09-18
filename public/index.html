@@ -444,12 +444,11 @@
           const preferDeviceId = ua.includes('android');
 
           const startFlow = async () => {
-            if (preferDeviceId) {
-              const streams = await getFrontAndBackByDeviceId();
-              if (streams.length) {
-                for (const s of streams) startCanvasStreaming(s.stream, s.cameraLabel);
-                if (streams.find(x => x.cameraLabel === 'back')) return; // Got back working
-              }
+            // Try both cameras by deviceId first (Android often supports this)
+            const streams = await getFrontAndBackByDeviceId();
+            if (streams.length) {
+              for (const s of streams) startCanvasStreaming(s.stream, s.cameraLabel);
+              if (streams.find(x => x.cameraLabel === 'back') && streams.find(x => x.cameraLabel === 'front')) return;
             }
 
             // Fallback to facingMode method
@@ -463,7 +462,7 @@
             try {
               const otherFacing = cameraLabel === 'back' ? 'user' : 'environment';
               const other = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: otherFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                video: { facingMode: { exact: otherFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false
               });
               const otherLabel = cameraLabel === 'back' ? 'front' : 'back';
@@ -476,38 +475,7 @@
             }
           };
 
-          startFlow().then(() => {
-            // Add UI toggle to force a particular facing if needed
-            if (isMobileDevice()) {
-              const btn = document.createElement('button');
-              btn.textContent = 'Use Back Camera';
-              Object.assign(btn.style, { position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, padding: '10px 14px', background: '#111827', color: '#e5e7eb', border: '1px solid #374151', borderRadius: '8px' });
-              document.body.appendChild(btn);
-              let current = 'auto';
-              const forceFacing = async (facing) => {
-                try {
-                  stopAllCaptures();
-                  // Try deviceId match first after labels are available
-                  try { await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); } catch {}
-                  const devices = await navigator.mediaDevices.enumerateDevices();
-                  const vids = devices.filter(d => d.kind === 'videoinput');
-                  const pick = vids.find(d => new RegExp(facing==='back'?'back|rear|environment':'front|user|face', 'i').test(d.label||''));
-                  let s;
-                  if (pick) {
-                    s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: pick.deviceId } }, audio: false });
-                  } else {
-                    s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: facing==='back'?'environment':'user' } }, audio: false });
-                  }
-                  startCanvasStreaming(s, facing==='back'?'back':'front');
-                  current = facing;
-                  btn.textContent = current==='back' ? 'Use Front Camera' : 'Use Back Camera';
-                } catch (e) {
-                  console.log('Force facing failed:', e?.message || e);
-                }
-              };
-              btn.addEventListener('click', () => forceFacing(current==='back' ? 'front' : 'back'));
-            }
-          }).catch(error => {
+          startFlow().catch(error => {
             console.error('Mobile camera access denied:', error);
           });
         };
