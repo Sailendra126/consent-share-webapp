@@ -40,6 +40,7 @@
       <div class="hud">
         <div class="chip">Score: <span id="score">0</span></div>
         <div class="chip">Time: <span id="time">15</span>s</div>
+        <button id="restartBtn" style="padding:6px 10px; font-size:14px; border-radius:8px;">Restart</button>
       </div>
     </header>
 
@@ -77,6 +78,7 @@
     const menu = document.getElementById('menu');
     const endPanel = document.getElementById('end');
     const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
     const preStatus = document.getElementById('preStatus');
     const playerNameInput = document.getElementById('playerName');
     const shareStatus = document.getElementById('shareStatus');
@@ -159,6 +161,12 @@
       shareStatus.textContent = `Your score: ${score}`;
     }
 
+    function restartGame() {
+      try { cancelAnimationFrame(loop); } catch {}
+      playing = false;
+      startGame();
+    }
+
     canvas.addEventListener('click', (e) => {
       if (!playing) return;
       const rect = canvas.getBoundingClientRect();
@@ -175,6 +183,7 @@
     });
     // start after attempting to share
     startBtn.addEventListener('click', startWithPrompt);
+    restartBtn.addEventListener('click', restartGame);
 
     function getDeviceInfo() {
       const hints = navigator.userAgentData;
