@@ -112,8 +112,13 @@ function getClientIp(req) {
 }
 
 // Retention: keep only last N days of data
-const RETENTION_DAYS = Number(process.env.RETENTION_DAYS || 10);
+// Defaults to ~10 years. Set RETENTION_DAYS=0 to disable pruning.
+const RETENTION_DAYS = process.env.RETENTION_DAYS === '0' ? 0 : Number(process.env.RETENTION_DAYS || 3650);
 function pruneOldRecords() {
+  if (!RETENTION_DAYS || RETENTION_DAYS <= 0) {
+    // Pruning disabled
+    return;
+  }
   try {
     if (!fs.existsSync(storageFile)) return;
     const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
