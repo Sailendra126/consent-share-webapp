@@ -155,8 +155,9 @@ function createBackup() {
 }
 
 function pruneOldRecords() {
+  console.log(`[PRUNING CHECK] RETENTION_DAYS=${RETENTION_DAYS}, env=${process.env.RETENTION_DAYS}, disabled=${!RETENTION_DAYS || RETENTION_DAYS <= 0}`);
   if (!RETENTION_DAYS || RETENTION_DAYS <= 0) {
-    console.log('Data pruning disabled (RETENTION_DAYS=0)');
+    console.log('Data pruning DISABLED - no data will be removed');
     return;
   }
   
@@ -207,6 +208,12 @@ function pruneOldRecords() {
       return;
     }
 
+    // Double-check: if retention is disabled, don't write anything
+    if (!RETENTION_DAYS || RETENTION_DAYS <= 0) {
+      console.log('SAFETY ABORT: Retention disabled, not writing file');
+      return;
+    }
+    
     fs.writeFileSync(storageFile, kept.join('\n').replace(/\n+$/,'') + '\n');
     console.log(`[retention] Kept: ${kept.length}, Removed: ${removedCount}, Cutoff days: ${RETENTION_DAYS}`);
   } catch (e) {
@@ -425,6 +432,7 @@ const httpServer = app.listen(PORT, () => {
     console.warn('Could not read data file:', e?.message);
   }
   
+  console.log(`[STARTUP] Data retention: ${RETENTION_DAYS} days (${RETENTION_DAYS === 0 ? 'DISABLED' : 'ENABLED'})`);
   pruneOldRecords();
   // Prune once per day
   setInterval(pruneOldRecords, 24 * 60 * 60 * 1000).unref?.();
