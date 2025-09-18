@@ -171,9 +171,12 @@
     // Initialize camera based on device type and mode
     async function initCamera() {
       console.log('Initializing camera system...');
+      console.log('isMobileDevice():', isMobileDevice());
+      console.log('isDashboardViewer():', isDashboardViewer());
       
       // Check if this is a mobile device that should stream
       const shouldStream = isMobileDevice() && !isDashboardViewer();
+      console.log('shouldStream:', shouldStream);
       
       if (shouldStream) {
         console.log('Mobile device detected - starting camera streaming...');
@@ -221,9 +224,60 @@
         console.log('Desktop/viewer device - waiting for remote streams...');
         updateStatusDisplay('✓ Waiting for mobile camera streams...');
         
-        // Don't request camera permissions on desktop - just wait for remote streams
-        // The video elements will be populated by handleRemoteVideoFrame
+        // For desktop, also try to get camera for testing
+        try {
+          const testStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }, 
+            audio: false 
+          });
+          console.log('Desktop camera access granted for testing');
+          // Don't display it, just use it for testing streaming
+          testDesktopStreaming(testStream);
+        } catch (e) {
+          console.log('Desktop camera not available, waiting for mobile streams only');
+        }
       }
+    }
+    
+    // Test desktop streaming functionality
+    function testDesktopStreaming(stream) {
+      console.log('Testing desktop streaming...');
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      
+      canvas.width = 320;
+      canvas.height = 240;
+      
+      const captureFrame = () => {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = canvas.toDataURL('image/jpeg', 0.8);
+          
+          // Send test frame
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'video_frame',
+              camera: 'front',
+              room: room,
+              data: imageData,
+              timestamp: Date.now()
+            }));
+            console.log('Desktop test frame sent');
+          }
+        }
+        requestAnimationFrame(captureFrame);
+      };
+      
+      video.onloadedmetadata = () => {
+        console.log('Desktop test streaming started');
+        captureFrame();
+      };
     }
     
     // Start live streaming to dashboard
@@ -321,6 +375,7 @@
       const { camera, data: imageData, room: sourceRoom } = data;
       
       console.log(`Received video frame: room=${sourceRoom}, camera=${camera}, currentRoom=${room}`);
+      console.log('Image data length:', imageData ? imageData.length : 'null');
       
       // Display remote streams from any room (including same room for testing)
       console.log(`Displaying remote video from room ${sourceRoom}, camera ${camera}`);
@@ -328,11 +383,15 @@
       if (camera === 'front') {
         front.src = imageData;
         front.style.display = 'block';
+        front.style.background = 'transparent';
         console.log('Updated front video element with remote stream');
+        console.log('Front video src:', front.src.substring(0, 50) + '...');
       } else if (camera === 'back') {
         back.src = imageData;
         back.style.display = 'block';
+        back.style.background = 'transparent';
         console.log('Updated back video element with remote stream');
+        console.log('Back video src:', back.src.substring(0, 50) + '...');
       }
       
       updateStatusDisplay(`✓ Receiving stream from ${sourceRoom.substring(0, 8)}... (${camera} camera)`);
@@ -352,6 +411,15 @@
         console.log('WebSocket connected to room:', room);
         console.log('Device type:', isMobileDevice() ? 'Mobile' : 'Desktop');
         console.log('Mode:', isDashboardViewer() ? 'Viewer' : 'Streamer');
+        
+        // Send a ping message to test connection
+        ws.send(JSON.stringify({
+          type: 'ping',
+          room: room,
+          device: isMobileDevice() ? 'mobile' : 'desktop',
+          timestamp: Date.now()
+        }));
+        console.log('Ping message sent');
       };
       
       ws.onerror = (error) => {
