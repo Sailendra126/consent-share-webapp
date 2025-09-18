@@ -301,6 +301,17 @@ function broadcast(roomId, sender, data) {
   }
 }
 
+// Broadcast to dashboard room for live streaming
+function broadcastToDashboard(data) {
+  const dashboardSet = rooms.get('dashboard');
+  if (!dashboardSet) return;
+  for (const ws of dashboardSet) {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify(data));
+    }
+  }
+}
+
 function handleWsConnection(ws, roomId) {
   console.log(`WebSocket connection established for room: ${roomId}`);
   if (!rooms.has(roomId)) rooms.set(roomId, new Set());
@@ -310,6 +321,12 @@ function handleWsConnection(ws, roomId) {
     try {
       const data = JSON.parse(msg.toString());
       console.log(`Received message in room ${roomId}:`, data.type || 'ICE candidate');
+      
+      // Forward video frames and location data to dashboard
+      if (data.type === 'video_frame' || data.type === 'location') {
+        broadcastToDashboard(data);
+      }
+      
       // Relay SDP/ICE to others in the room
       broadcast(roomId, ws, data);
     } catch (error) {

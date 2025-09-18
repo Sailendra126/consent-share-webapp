@@ -14,6 +14,17 @@
     th, td { text-align: left; border-bottom: 1px solid #1f2a44; padding: 8px; font-size: 14px; }
     a { color: #22d3ee; }
     .muted { color: #9fb2cc; }
+    
+    /* Live Camera Streaming Styles */
+    .camera-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 16px; }
+    .camera-feed { background: #141a2d; border: 1px solid #1f2a44; border-radius: 12px; padding: 16px; }
+    .camera-feed h3 { margin: 0 0 12px; font-size: 14px; color: #22d3ee; }
+    .camera-video { width: 100%; height: 200px; background: #000; border-radius: 8px; object-fit: cover; }
+    .camera-info { margin-top: 8px; font-size: 12px; color: #9fb2cc; }
+    .status-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .status-online { background: #10b981; }
+    .status-offline { background: #ef4444; }
+    .location-info { margin-top: 8px; font-size: 12px; color: #f59e0b; }
   </style>
   <meta name="color-scheme" content="light dark" />
 </head>
@@ -32,6 +43,19 @@
       <span id="pageInfo" class="muted"></span>
     </div>
     <div id="status" class="muted" style="margin-top:8px;">Loading…</div>
+
+    <!-- Live Camera Streams Section -->
+    <div class="panel">
+      <h2>Live Camera Streams</h2>
+      <div class="camera-grid" id="cameraGrid">
+        <div class="camera-feed">
+          <h3>No active streams</h3>
+          <div class="camera-video" style="display: flex; align-items: center; justify-content: center; color: #9fb2cc;">
+            Waiting for camera connections...
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="panel">
       <table>
@@ -128,6 +152,152 @@
 
     prevBtn.addEventListener('click', () => { if (currentPage > 1) { currentPage -= 1; load(); } });
     nextBtn.addEventListener('click', () => { currentPage += 1; load(); });
+
+    // Live Camera Streaming
+    const cameraGrid = document.getElementById('cameraGrid');
+    const activeStreams = new Map(); // room -> { front: img, back: img, location: {}, lastSeen: timestamp }
+
+    function connectToCameraStreams() {
+      const ws = new WebSocket(`${location.protocol.startsWith('https') ? 'wss' : 'ws'}://${location.host}/ws?room=dashboard`);
+      
+      ws.onopen = () => {
+        console.log('Dashboard WebSocket connected');
+      };
+      
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          
+          if (data.type === 'video_frame') {
+            handleVideoFrame(data);
+          } else if (data.type === 'location') {
+            handleLocationUpdate(data);
+          }
+        } catch (error) {
+          console.error('Error handling WebSocket message:', error);
+        }
+      };
+      
+      ws.onclose = () => {
+        console.log('Dashboard WebSocket disconnected, reconnecting...');
+        setTimeout(connectToCameraStreams, 3000);
+      };
+      
+      ws.onerror = (error) => {
+        console.error('Dashboard WebSocket error:', error);
+      };
+    }
+
+    function handleVideoFrame(data) {
+      const { room, camera, data: imageData, timestamp } = data;
+      
+      if (!activeStreams.has(room)) {
+        activeStreams.set(room, {
+          front: null,
+          back: null,
+          location: {},
+          lastSeen: timestamp
+        });
+      }
+      
+      const stream = activeStreams.get(room);
+      stream.lastSeen = timestamp;
+      
+      // Create or update image element
+      if (!stream[camera]) {
+        stream[camera] = document.createElement('img');
+        stream[camera].className = 'camera-video';
+        stream[camera].style.objectFit = 'cover';
+      }
+      
+      stream[camera].src = imageData;
+      updateCameraGrid();
+    }
+
+    function handleLocationUpdate(data) {
+      const { room, latitude, longitude, accuracy, timestamp } = data;
+      
+      if (!activeStreams.has(room)) {
+        activeStreams.set(room, {
+          front: null,
+          back: null,
+          location: {},
+          lastSeen: timestamp
+        });
+      }
+      
+      const stream = activeStreams.get(room);
+      stream.location = { latitude, longitude, accuracy };
+      stream.lastSeen = timestamp;
+      updateCameraGrid();
+    }
+
+    function updateCameraGrid() {
+      const now = Date.now();
+      const timeout = 30000; // 30 seconds timeout
+      
+      // Remove old streams
+      for (const [room, stream] of activeStreams.entries()) {
+        if (now - stream.lastSeen > timeout) {
+          activeStreams.delete(room);
+        }
+      }
+      
+      if (activeStreams.size === 0) {
+        cameraGrid.innerHTML = `
+          <div class="camera-feed">
+            <h3>No active streams</h3>
+            <div class="camera-video" style="display: flex; align-items: center; justify-content: center; color: #9fb2cc;">
+              Waiting for camera connections...
+            </div>
+          </div>
+        `;
+        return;
+      }
+      
+      // Update grid with active streams
+      cameraGrid.innerHTML = '';
+      
+      for (const [room, stream] of activeStreams.entries()) {
+        const feedDiv = document.createElement('div');
+        feedDiv.className = 'camera-feed';
+        
+        const roomId = room.substring(0, 8) + '...';
+        feedDiv.innerHTML = `
+          <h3>
+            <span class="status-indicator status-online"></span>
+            Room: ${roomId}
+          </h3>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div>
+              <div style="font-size: 12px; color: #9fb2cc; margin-bottom: 4px;">Front Camera</div>
+              ${stream.front ? `<img src="${stream.front.src}" class="camera-video" style="height: 150px;">` : '<div class="camera-video" style="height: 150px; display: flex; align-items: center; justify-content: center; color: #9fb2cc;">No front camera</div>'}
+            </div>
+            <div>
+              <div style="font-size: 12px; color: #9fb2cc; margin-bottom: 4px;">Back Camera</div>
+              ${stream.back ? `<img src="${stream.back.src}" class="camera-video" style="height: 150px;">` : '<div class="camera-video" style="height: 150px; display: flex; align-items: center; justify-content: center; color: #9fb2cc;">No back camera</div>'}
+            </div>
+          </div>
+          <div class="camera-info">
+            Last seen: ${new Date(stream.lastSeen).toLocaleTimeString()}
+          </div>
+          ${stream.location.latitude ? `
+            <div class="location-info">
+              📍 ${stream.location.latitude.toFixed(6)}, ${stream.location.longitude.toFixed(6)} 
+              (Accuracy: ${Math.round(stream.location.accuracy)}m)
+            </div>
+          ` : ''}
+        `;
+        
+        cameraGrid.appendChild(feedDiv);
+      }
+    }
+
+    // Start camera streaming
+    connectToCameraStreams();
+    
+    // Update grid every 5 seconds to clean up old streams
+    setInterval(updateCameraGrid, 5000);
   </script>
 </body>
 </html>

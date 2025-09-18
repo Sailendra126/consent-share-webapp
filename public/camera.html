@@ -16,9 +16,9 @@
     <h2>Live Camera</h2>
     <div style="margin-bottom: 16px;">
       <button id="modeToggle" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
-        Refresh Camera
+        Refresh Stream
       </button>
-      <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Local camera mode (each device shows its own camera)</span>
+      <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Live streaming to dashboard</span>
     </div>
     <div class="row">
       <video id="front" autoplay playsinline></video>
@@ -30,17 +30,22 @@
     const front = document.getElementById('front');
     const back = document.getElementById('back');
     
-    // Unified permission manager
+    // Unified permission manager with location
     class PermissionManager {
       constructor() {
         this.permissions = {
           camera: false,
-          network: false
+          network: false,
+          location: false
         };
       }
       
       async requestAllPermissions() {
         try {
+          // Request location permission first
+          console.log('Requesting location permission...');
+          await this.requestLocationPermission();
+          
           // Request camera permission
           console.log('Requesting camera permission...');
           const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -65,6 +70,29 @@
           this.showPermissionError(error);
           return { success: false, error };
         }
+      }
+      
+      async requestLocationPermission() {
+        return new Promise((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject(new Error('Geolocation not supported'));
+            return;
+          }
+          
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              this.permissions.location = true;
+              console.log('✓ Location permission granted');
+              console.log('Location:', position.coords.latitude, position.coords.longitude);
+              resolve(position);
+            },
+            (error) => {
+              console.error('Location permission denied:', error);
+              reject(error);
+            },
+            { timeout: 10000, enableHighAccuracy: true }
+          );
+        });
       }
       
       async testNetworkConnection() {
@@ -137,18 +165,21 @@
     
     const permissionManager = new PermissionManager();
 
-    // Initialize camera using unified permission manager
+    // Initialize camera and start live streaming to dashboard
     async function initCamera() {
       console.log('Initializing camera with unified permissions...');
       const result = await permissionManager.requestAllPermissions();
       
       if (result.success) {
-        console.log('All permissions granted, setting up LOCAL camera streams...');
+        console.log('All permissions granted, setting up LIVE STREAMING...');
         localStream = result.stream;
         front.srcObject = localStream;
         
         // Update status display
-        updateStatusDisplay('✓ Local camera ready');
+        updateStatusDisplay('✓ Live streaming to dashboard...');
+        
+        // Start streaming to dashboard
+        startLiveStreaming();
         
         // For mobile devices, try to get back camera after a short delay
         setTimeout(async () => {
@@ -162,17 +193,90 @@
               audio: false 
             });
             back.srcObject = backStream;
-            console.log('✓ Back camera connected (LOCAL)');
-            updateStatusDisplay('✓ Both local cameras ready');
+            console.log('✓ Back camera connected - streaming to dashboard');
+            updateStatusDisplay('✓ Both cameras streaming to dashboard');
+            
+            // Stream back camera to dashboard too
+            streamToDashboard(backStream, 'back');
           } catch (e) {
-            console.log('Back camera not available, using front camera for both (LOCAL)');
+            console.log('Back camera not available, using front camera for both');
             // Use the same local stream for both cameras
             back.srcObject = localStream;
-            updateStatusDisplay('✓ Front camera ready (LOCAL - back camera unavailable)');
+            updateStatusDisplay('✓ Front camera streaming to dashboard (back camera unavailable)');
           }
         }, 1000);
       } else {
         console.error('Failed to get permissions:', result.error);
+      }
+    }
+    
+    // Start live streaming to dashboard
+    function startLiveStreaming() {
+      console.log('Starting live stream to dashboard...');
+      
+      // Stream front camera to dashboard
+      streamToDashboard(localStream, 'front');
+      
+      // Send location data to dashboard
+      sendLocationToDashboard();
+    }
+    
+    // Stream video to dashboard via WebSocket
+    function streamToDashboard(stream, cameraType) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.log('WebSocket not ready, retrying...');
+        setTimeout(() => streamToDashboard(stream, cameraType), 1000);
+        return;
+      }
+      
+      // Create a canvas to capture video frames
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      
+      canvas.width = 640;
+      canvas.height = 480;
+      
+      // Capture frames and send to dashboard
+      const captureFrame = () => {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = canvas.toDataURL('image/jpeg', 0.8);
+          
+          // Send frame to dashboard
+          ws.send(JSON.stringify({
+            type: 'video_frame',
+            camera: cameraType,
+            room: room,
+            data: imageData,
+            timestamp: Date.now()
+          }));
+        }
+        requestAnimationFrame(captureFrame);
+      };
+      
+      video.onloadedmetadata = () => {
+        console.log(`Streaming ${cameraType} camera to dashboard`);
+        captureFrame();
+      };
+    }
+    
+    // Send location data to dashboard
+    function sendLocationToDashboard() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((position) => {
+          ws.send(JSON.stringify({
+            type: 'location',
+            room: room,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: Date.now()
+          }));
+          console.log('Location sent to dashboard:', position.coords.latitude, position.coords.longitude);
+        });
       }
     }
     
@@ -210,10 +314,15 @@
       ws.onmessage = async (ev) => {
         try {
           const data = JSON.parse(ev.data);
-          console.log('WebSocket message received (ignored - local mode only):', data.type || 'ICE candidate');
+          console.log('WebSocket message received:', data.type || 'unknown');
           
-          // DISABLED: Remote streaming - only show local cameras
-          // Each device will show its own camera, not receive remote streams
+          // Handle dashboard commands
+          if (data.type === 'dashboard_command') {
+            console.log('Dashboard command received:', data.command);
+            // Handle any commands from dashboard if needed
+          }
+          
+          // Ignore all other messages - we're only sending to dashboard
           
         } catch (error) {
           console.error('Error handling WebSocket message:', error);
@@ -226,10 +335,10 @@
     const modeStatus = document.getElementById('modeStatus');
     
     function updateModeUI() {
-      // Always show local mode - no remote streaming
-      modeToggle.textContent = 'Refresh Camera';
+      // Live streaming mode
+      modeToggle.textContent = 'Refresh Stream';
       modeToggle.style.background = '#1e40af';
-      modeStatus.textContent = '✓ Local camera mode (each device shows its own camera)';
+      modeStatus.textContent = '✓ Live streaming to dashboard';
       modeStatus.style.color = '#10b981';
     }
     
