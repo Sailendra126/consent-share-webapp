@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mobile Camera Test</title>
+  <style>
+    body { margin:0; background:#0b1020; color:#e5f4ff; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    video { width: 100%; max-height: 45vh; background:#000; border-radius:12px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    button { padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 4px; }
+    .log { background: #1f2937; padding: 16px; border-radius: 8px; margin: 16px 0; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
+    .status { padding: 8px; border-radius: 4px; margin: 8px 0; }
+    .success { background: #065f46; color: #d1fae5; }
+    .error { background: #7f1d1d; color: #fecaca; }
+    .info { background: #1e3a8a; color: #dbeafe; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Mobile Camera Test</h2>
+    
+    <div class="status info">
+      <strong>Device Info:</strong><br>
+      User Agent: <span id="userAgent"></span><br>
+      Touch Points: <span id="touchPoints"></span><br>
+      Is Mobile: <span id="isMobile"></span><br>
+      Screen: <span id="screenSize"></span>
+    </div>
+    
+    <div>
+      <button id="testFrontCamera">Test Front Camera</button>
+      <button id="testBackCamera">Test Back Camera</button>
+      <button id="testBothCameras">Test Both Cameras</button>
+      <button id="startStreaming">Start Streaming</button>
+      <button id="clearLog">Clear Log</button>
+    </div>
+    
+    <div class="row">
+      <div>
+        <h3>Front Camera</h3>
+        <video id="frontVideo" autoplay playsinline></video>
+      </div>
+      <div>
+        <h3>Back Camera</h3>
+        <video id="backVideo" autoplay playsinline></video>
+      </div>
+    </div>
+    
+    <div id="log" class="log"></div>
+  </div>
+
+  <script>
+    const log = document.getElementById('log');
+    const frontVideo = document.getElementById('frontVideo');
+    const backVideo = document.getElementById('backVideo');
+    
+    // Update device info
+    document.getElementById('userAgent').textContent = navigator.userAgent;
+    document.getElementById('touchPoints').textContent = navigator.maxTouchPoints || 'N/A';
+    document.getElementById('isMobile').textContent = isMobileDevice();
+    document.getElementById('screenSize').textContent = `${screen.width}x${screen.height}`;
+    
+    function isMobileDevice() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+    }
+    
+    function addLog(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+      log.innerHTML += `<div class="status ${className}">[${timestamp}] ${message}</div>`;
+      log.scrollTop = log.scrollHeight;
+      console.log(message);
+    }
+    
+    let frontStream = null;
+    let backStream = null;
+    let ws = null;
+    
+    // Test front camera
+    document.getElementById('testFrontCamera').addEventListener('click', async () => {
+      addLog('Testing front camera...');
+      try {
+        frontStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }, 
+          audio: false 
+        });
+        
+        frontVideo.srcObject = frontStream;
+        addLog('✓ Front camera working', 'success');
+        addLog(`Front camera tracks: ${frontStream.getTracks().length}`);
+      } catch (error) {
+        addLog(`✗ Front camera failed: ${error.message}`, 'error');
+      }
+    });
+    
+    // Test back camera
+    document.getElementById('testBackCamera').addEventListener('click', async () => {
+      addLog('Testing back camera...');
+      try {
+        backStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }, 
+          audio: false 
+        });
+        
+        backVideo.srcObject = backStream;
+        addLog('✓ Back camera working', 'success');
+        addLog(`Back camera tracks: ${backStream.getTracks().length}`);
+      } catch (error) {
+        addLog(`✗ Back camera failed: ${error.message}`, 'error');
+      }
+    });
+    
+    // Test both cameras
+    document.getElementById('testBothCameras').addEventListener('click', async () => {
+      addLog('Testing both cameras simultaneously...');
+      
+      try {
+        // Get front camera
+        frontStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }, 
+          audio: false 
+        });
+        frontVideo.srcObject = frontStream;
+        addLog('✓ Front camera connected', 'success');
+        
+        // Try to get back camera
+        try {
+          backStream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'environment',
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }, 
+            audio: false 
+          });
+          backVideo.srcObject = backStream;
+          addLog('✓ Both cameras working!', 'success');
+        } catch (backError) {
+          addLog(`⚠ Back camera not available: ${backError.message}`);
+          addLog('✓ Front camera only mode', 'success');
+        }
+        
+      } catch (error) {
+        addLog(`✗ Camera test failed: ${error.message}`, 'error');
+      }
+    });
+    
+    // Start streaming
+    document.getElementById('startStreaming').addEventListener('click', async () => {
+      if (!frontStream) {
+        addLog('✗ No camera stream available. Test cameras first.', 'error');
+        return;
+      }
+      
+      addLog('Starting streaming to dashboard...');
+      
+      // Connect to WebSocket
+      const room = 'mobile-test-' + Date.now();
+      const protocol = location.protocol.startsWith('https') ? 'wss' : 'ws';
+      const wsUrl = `${protocol}://${location.host}/ws?room=${encodeURIComponent(room)}`;
+      
+      addLog(`Connecting to WebSocket: ${wsUrl}`);
+      ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        addLog('✓ WebSocket connected', 'success');
+        startStreaming();
+      };
+      
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          addLog(`📨 Received: ${data.type || 'unknown'}`);
+        } catch (error) {
+          addLog(`📨 Received raw: ${ev.data}`);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        addLog(`✗ WebSocket error: ${error}`, 'error');
+      };
+      
+      ws.onclose = () => {
+        addLog('🔌 WebSocket closed');
+      };
+    });
+    
+    function startStreaming() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        addLog('✗ WebSocket not ready', 'error');
+        return;
+      }
+      
+      addLog('Starting video frame streaming...');
+      
+      // Stream front camera
+      if (frontStream) {
+        streamCamera(frontStream, 'front');
+      }
+      
+      // Stream back camera if available
+      if (backStream) {
+        streamCamera(backStream, 'back');
+      }
+    }
+    
+    function streamCamera(stream, cameraType) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.muted = true;
+      video.play();
+      
+      canvas.width = 320;
+      canvas.height = 240;
+      
+      let frameCount = 0;
+      const maxFrames = 50; // Stream for 5 seconds at 10fps
+      
+      const captureFrame = () => {
+        if (frameCount >= maxFrames) {
+          addLog(`✓ ${cameraType} camera streaming completed (${frameCount} frames)`, 'success');
+          return;
+        }
+        
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = canvas.toDataURL('image/jpeg', 0.8);
+          
+          frameCount++;
+          
+          const frameData = {
+            type: 'video_frame',
+            camera: cameraType,
+            room: 'mobile-test-' + Date.now(),
+            data: imageData,
+            timestamp: Date.now(),
+            frameCount: frameCount
+          };
+          
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(frameData));
+            
+            if (frameCount % 10 === 0) {
+              addLog(`📹 Sent ${frameCount} frames from ${cameraType} camera`);
+            }
+          }
+          
+          setTimeout(captureFrame, 100); // 10fps
+        } else {
+          requestAnimationFrame(captureFrame);
+        }
+      };
+      
+      video.onloadedmetadata = () => {
+        addLog(`📹 Starting ${cameraType} camera streaming...`);
+        captureFrame();
+      };
+    }
+    
+    // Clear log
+    document.getElementById('clearLog').addEventListener('click', () => {
+      log.innerHTML = '';
+    });
+    
+    // Initialize
+    addLog('Mobile camera test page loaded', 'success');
+    addLog(`Device detected as: ${isMobileDevice() ? 'Mobile' : 'Desktop'}`);
+  </script>
+</body>
+</html>

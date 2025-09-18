@@ -693,26 +693,43 @@
       console.log('Force stream clicked...');
       
       try {
-        // Force camera access regardless of device detection
-        console.log('Forcing camera access...');
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }, 
-          audio: false 
-        });
+        // Try to get mobile-style camera first (environment/back camera)
+        console.log('Trying to get mobile camera (environment facing)...');
+        let stream;
+        
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'environment', // Back camera for mobile
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }, 
+            audio: false 
+          });
+          console.log('✓ Mobile-style camera (environment) accessed');
+        } catch (envError) {
+          console.log('Environment camera not available, trying user camera...');
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'user', // Front camera
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }, 
+            audio: false 
+          });
+          console.log('✓ User camera accessed');
+        }
         
         console.log('Camera access granted for forced streaming');
         console.log('Stream tracks:', stream.getTracks());
+        console.log('Device type:', isMobileDevice() ? 'Mobile' : 'Desktop');
         
         // Wait for WebSocket to be ready
         const waitForWebSocket = () => {
           if (ws && ws.readyState === WebSocket.OPEN) {
             console.log('WebSocket ready, starting forced streaming...');
             streamToDashboard(stream, 'front');
-            updateStatusDisplay('✓ Forced streaming active');
+            updateStatusDisplay('✓ Forced streaming active (check dashboard)');
           } else {
             console.log('WebSocket not ready, waiting...');
             setTimeout(waitForWebSocket, 500);
