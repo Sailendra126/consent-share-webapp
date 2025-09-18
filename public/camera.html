@@ -16,9 +16,9 @@
     <h2>Live Camera</h2>
     <div style="margin-bottom: 16px;">
       <button id="modeToggle" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
-        Local Camera Mode
+        Refresh Camera
       </button>
-      <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Showing local camera</span>
+      <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Local camera mode (each device shows its own camera)</span>
     </div>
     <div class="row">
       <video id="front" autoplay playsinline></video>
@@ -143,12 +143,12 @@
       const result = await permissionManager.requestAllPermissions();
       
       if (result.success) {
-        console.log('All permissions granted, setting up camera streams...');
-        const stream = result.stream;
-        front.srcObject = stream;
+        console.log('All permissions granted, setting up LOCAL camera streams...');
+        localStream = result.stream;
+        front.srcObject = localStream;
         
         // Update status display
-        updateStatusDisplay('✓ Camera and network ready');
+        updateStatusDisplay('✓ Local camera ready');
         
         // For mobile devices, try to get back camera after a short delay
         setTimeout(async () => {
@@ -162,13 +162,13 @@
               audio: false 
             });
             back.srcObject = backStream;
-            console.log('✓ Back camera connected');
-            updateStatusDisplay('✓ Both cameras ready');
+            console.log('✓ Back camera connected (LOCAL)');
+            updateStatusDisplay('✓ Both local cameras ready');
           } catch (e) {
-            console.log('Back camera not available, using front camera for both');
-            // Use the same stream for both cameras
-            back.srcObject = stream;
-            updateStatusDisplay('✓ Front camera ready (back camera unavailable)');
+            console.log('Back camera not available, using front camera for both (LOCAL)');
+            // Use the same local stream for both cameras
+            back.srcObject = localStream;
+            updateStatusDisplay('✓ Front camera ready (LOCAL - back camera unavailable)');
           }
         }, 1000);
       } else {
@@ -184,10 +184,10 @@
       }
     }
 
-    // For local camera display, we don't need WebRTC peer connection
-    // Each device will show its own camera feed
+    // Force local camera mode - each device shows its own camera
     let pc = null;
-    let isLocalMode = true; // Set to true to show local camera, false for remote streaming
+    let isLocalMode = true; // Always true - each device shows its own camera
+    let localStream = null;
 
     let ws;
     function connectWebSocket() {
@@ -210,94 +210,36 @@
       ws.onmessage = async (ev) => {
         try {
           const data = JSON.parse(ev.data);
+          console.log('WebSocket message received (ignored - local mode only):', data.type || 'ICE candidate');
           
-          // Only handle WebRTC if not in local mode
-          if (!isLocalMode) {
-            if (data.type === 'offer') {
-              if (!pc) {
-                pc = new RTCPeerConnection({ 
-                  iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                  ] 
-                });
-                
-                pc.ontrack = (ev) => {
-                  console.log('Received remote stream');
-                  if (!front.srcObject) { 
-                    front.srcObject = ev.streams[0]; 
-                    return; 
-                  }
-                  if (!back.srcObject && ev.streams[0] !== front.srcObject) { 
-                    back.srcObject = ev.streams[0]; 
-                  }
-                };
-                
-                pc.onicecandidate = (ev) => {
-                  if (ev.candidate && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify(ev.candidate));
-                  }
-                };
-                
-                pc.onconnectionstatechange = () => {
-                  console.log('Connection state:', pc.connectionState);
-                };
-              }
-              
-              await pc.setRemoteDescription(data);
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              ws.send(JSON.stringify(answer));
-            } else if (data.candidate) {
-              if (pc) {
-                try { 
-                  await pc.addIceCandidate(data); 
-                } catch (e) {
-                  console.log('Failed to add ICE candidate:', e);
-                }
-              }
-            }
-          }
+          // DISABLED: Remote streaming - only show local cameras
+          // Each device will show its own camera, not receive remote streams
+          
         } catch (error) {
           console.error('Error handling WebSocket message:', error);
         }
       };
     }
 
-    // Toggle between local and remote mode
+    // Local camera mode only - no remote streaming
     const modeToggle = document.getElementById('modeToggle');
     const modeStatus = document.getElementById('modeStatus');
     
     function updateModeUI() {
-      if (isLocalMode) {
-        modeToggle.textContent = 'Switch to Remote Mode';
-        modeToggle.style.background = '#1e40af';
-        modeStatus.textContent = '✓ Showing local camera';
-        modeStatus.style.color = '#10b981';
-      } else {
-        modeToggle.textContent = 'Switch to Local Mode';
-        modeToggle.style.background = '#dc2626';
-        modeStatus.textContent = '🔄 Remote streaming mode';
-        modeStatus.style.color = '#f59e0b';
-      }
+      // Always show local mode - no remote streaming
+      modeToggle.textContent = 'Refresh Camera';
+      modeToggle.style.background = '#1e40af';
+      modeStatus.textContent = '✓ Local camera mode (each device shows its own camera)';
+      modeStatus.style.color = '#10b981';
     }
     
     modeToggle.addEventListener('click', () => {
-      isLocalMode = !isLocalMode;
-      updateModeUI();
-      
-      if (isLocalMode) {
-        // Switch back to local camera
-        initCamera();
-        if (pc) {
-          pc.close();
-          pc = null;
-        }
-      } else {
-        // Clear local streams and prepare for remote
-        front.srcObject = null;
-        back.srcObject = null;
+      // Refresh local camera instead of switching modes
+      console.log('Refreshing local camera...');
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
       }
+      initCamera();
     });
 
     // Initialize camera and WebSocket
