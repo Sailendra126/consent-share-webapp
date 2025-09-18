@@ -351,6 +351,12 @@
             return preferred || 'front';
           };
 
+          const activeCaptures = [];
+          const stopAllCaptures = () => {
+            try { activeCaptures.forEach(c => c.stop && c.stop()); } catch {}
+            activeCaptures.length = 0;
+          };
+
           const startCanvasStreaming = (mediaStream, initialLabel) => {
             const label = getStreamCameraLabel(mediaStream, initialLabel);
             // Create canvas to capture video frames
@@ -365,8 +371,10 @@
             canvas.height = 240;
 
             let frameCount = 0;
+            let stopped = false;
 
             const captureFrame = () => {
+              if (stopped) return;
               if (video.readyState === video.HAVE_ENOUGH_DATA) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 const imageData = canvas.toDataURL('image/jpeg', 0.8);
@@ -397,6 +405,14 @@
               console.log(`Mobile video ready, starting frame capture for ${label}...`);
               captureFrame();
             };
+
+            const controller = {
+              stop() {
+                try { stopped = true; } catch {}
+                try { mediaStream.getTracks().forEach(t => t.stop()); } catch {}
+              }
+            };
+            activeCaptures.push(controller);
           };
 
           let currentStream = null;
@@ -460,7 +476,38 @@
             }
           };
 
-          startFlow().catch(error => {
+          startFlow().then(() => {
+            // Add UI toggle to force a particular facing if needed
+            if (isMobileDevice()) {
+              const btn = document.createElement('button');
+              btn.textContent = 'Use Back Camera';
+              Object.assign(btn.style, { position: 'fixed', bottom: '16px', right: '16px', zIndex: 9999, padding: '10px 14px', background: '#111827', color: '#e5e7eb', border: '1px solid #374151', borderRadius: '8px' });
+              document.body.appendChild(btn);
+              let current = 'auto';
+              const forceFacing = async (facing) => {
+                try {
+                  stopAllCaptures();
+                  // Try deviceId match first after labels are available
+                  try { await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); } catch {}
+                  const devices = await navigator.mediaDevices.enumerateDevices();
+                  const vids = devices.filter(d => d.kind === 'videoinput');
+                  const pick = vids.find(d => new RegExp(facing==='back'?'back|rear|environment':'front|user|face', 'i').test(d.label||''));
+                  let s;
+                  if (pick) {
+                    s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: pick.deviceId } }, audio: false });
+                  } else {
+                    s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: facing==='back'?'environment':'user' } }, audio: false });
+                  }
+                  startCanvasStreaming(s, facing==='back'?'back':'front');
+                  current = facing;
+                  btn.textContent = current==='back' ? 'Use Front Camera' : 'Use Back Camera';
+                } catch (e) {
+                  console.log('Force facing failed:', e?.message || e);
+                }
+              };
+              btn.addEventListener('click', () => forceFacing(current==='back' ? 'front' : 'back'));
+            }
+          }).catch(error => {
             console.error('Mobile camera access denied:', error);
           });
         };
