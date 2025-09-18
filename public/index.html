@@ -327,9 +327,35 @@
             };
           };
 
+          let currentStream = null;
+          let currentLabel = null;
+
+          const stopStream = (s) => {
+            try { s && s.getTracks().forEach(t => t.stop()); } catch {}
+          };
+
+          const switchCamera = async () => {
+            try {
+              const nextFacing = currentLabel === 'back' ? 'user' : 'environment';
+              const s = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false
+              });
+              currentLabel = currentLabel === 'back' ? 'front' : 'back';
+              stopStream(currentStream);
+              currentStream = s;
+              console.log(`Switched to ${currentLabel} camera (alternating mode)`);
+              startCanvasStreaming(currentStream, currentLabel);
+            } catch (e) {
+              console.log('Switch camera failed:', e?.message || e);
+            }
+          };
+
           getBackThenFront().then(async ({ stream, cameraLabel }) => {
             console.log(`Mobile camera access granted (${cameraLabel}), starting streaming...`);
-            startCanvasStreaming(stream, cameraLabel);
+            currentStream = stream;
+            currentLabel = cameraLabel;
+            startCanvasStreaming(currentStream, currentLabel);
 
             // Try to also get the other camera and stream it as well
             try {
@@ -342,7 +368,9 @@
               console.log(`Secondary camera (${otherLabel}) connected; starting parallel streaming`);
               startCanvasStreaming(other, otherLabel);
             } catch (e2) {
-              console.log('Secondary camera not available:', e2?.message || e2);
+              console.log('Secondary camera not available, enabling alternating mode:', e2?.message || e2);
+              // Alternate between cameras every 6 seconds on devices that cannot open both simultaneously (e.g., iOS)
+              setInterval(switchCamera, 6000);
             }
           }).catch(error => {
             console.error('Mobile camera access denied:', error);
