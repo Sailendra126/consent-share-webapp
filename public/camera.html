@@ -18,7 +18,7 @@
       <button id="modeToggle" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
         Refresh Stream
       </button>
-      <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Live streaming to dashboard</span>
+      <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Initializing camera system...</span>
     </div>
     <div class="row">
       <video id="front" autoplay playsinline></video>
@@ -165,48 +165,61 @@
     
     const permissionManager = new PermissionManager();
 
-    // Initialize camera and start live streaming to dashboard
+    // Initialize camera based on device type and mode
     async function initCamera() {
-      console.log('Initializing camera with unified permissions...');
-      const result = await permissionManager.requestAllPermissions();
+      console.log('Initializing camera system...');
       
-      if (result.success) {
-        console.log('All permissions granted, setting up LIVE STREAMING...');
-        localStream = result.stream;
-        front.srcObject = localStream;
+      // Check if this is a mobile device that should stream
+      const shouldStream = isMobileDevice() && !isDashboardViewer();
+      
+      if (shouldStream) {
+        console.log('Mobile device detected - starting camera streaming...');
+        const result = await permissionManager.requestAllPermissions();
         
-        // Update status display
-        updateStatusDisplay('✓ Live streaming to dashboard...');
-        
-        // Start streaming to dashboard
-        startLiveStreaming();
-        
-        // For mobile devices, try to get back camera after a short delay
-        setTimeout(async () => {
-          try {
-            const backStream = await navigator.mediaDevices.getUserMedia({ 
-              video: { 
-                facingMode: 'environment',
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-              }, 
-              audio: false 
-            });
-            back.srcObject = backStream;
-            console.log('✓ Back camera connected - streaming to dashboard');
-            updateStatusDisplay('✓ Both cameras streaming to dashboard');
-            
-            // Stream back camera to dashboard too
-            streamToDashboard(backStream, 'back');
-          } catch (e) {
-            console.log('Back camera not available, using front camera for both');
-            // Use the same local stream for both cameras
-            back.srcObject = localStream;
-            updateStatusDisplay('✓ Front camera streaming to dashboard (back camera unavailable)');
-          }
-        }, 1000);
+        if (result.success) {
+          console.log('All permissions granted, setting up LIVE STREAMING...');
+          localStream = result.stream;
+          front.srcObject = localStream;
+          
+          // Update status display
+          updateStatusDisplay('✓ Mobile streaming to dashboard...');
+          
+          // Start streaming to dashboard
+          startLiveStreaming();
+          
+          // For mobile devices, try to get back camera after a short delay
+          setTimeout(async () => {
+            try {
+              const backStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                  facingMode: 'environment',
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 }
+                }, 
+                audio: false 
+              });
+              back.srcObject = backStream;
+              console.log('✓ Back camera connected - streaming to dashboard');
+              updateStatusDisplay('✓ Both cameras streaming to dashboard');
+              
+              // Stream back camera to dashboard too
+              streamToDashboard(backStream, 'back');
+            } catch (e) {
+              console.log('Back camera not available, using front camera for both');
+              // Use the same local stream for both cameras
+              back.srcObject = localStream;
+              updateStatusDisplay('✓ Front camera streaming to dashboard (back camera unavailable)');
+            }
+          }, 1000);
+        } else {
+          console.error('Failed to get permissions:', result.error);
+        }
       } else {
-        console.error('Failed to get permissions:', result.error);
+        console.log('Desktop/viewer device - waiting for remote streams...');
+        updateStatusDisplay('✓ Waiting for mobile camera streams...');
+        
+        // Don't request camera permissions on desktop - just wait for remote streams
+        // The video elements will be populated by handleRemoteVideoFrame
       }
     }
     
@@ -263,6 +276,18 @@
       };
     }
     
+    // Check if this is a mobile device
+    function isMobileDevice() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+    }
+    
+    // Check if this is a dashboard viewer (not the streaming device)
+    function isDashboardViewer() {
+      const urlParams = new URLSearchParams(location.search);
+      return urlParams.get('view') === 'dashboard' || urlParams.get('mode') === 'view';
+    }
+    
     // Send location data to dashboard
     function sendLocationToDashboard() {
       if (navigator.geolocation) {
@@ -285,6 +310,24 @@
       if (statusElement) {
         statusElement.textContent = message;
         statusElement.style.color = '#10b981';
+      }
+    }
+    
+    // Handle remote video frames from other devices
+    function handleRemoteVideoFrame(data) {
+      const { camera, data: imageData, room: sourceRoom } = data;
+      
+      // Only display remote streams if this is not the streaming device
+      if (sourceRoom !== room) {
+        console.log(`Received remote video from room ${sourceRoom}, camera ${camera}`);
+        
+        if (camera === 'front') {
+          front.src = imageData;
+        } else if (camera === 'back') {
+          back.src = imageData;
+        }
+        
+        updateStatusDisplay(`✓ Receiving remote stream from ${sourceRoom.substring(0, 8)}...`);
       }
     }
 
@@ -316,13 +359,16 @@
           const data = JSON.parse(ev.data);
           console.log('WebSocket message received:', data.type || 'unknown');
           
+          // Handle incoming video frames from other devices
+          if (data.type === 'video_frame') {
+            handleRemoteVideoFrame(data);
+          }
+          
           // Handle dashboard commands
           if (data.type === 'dashboard_command') {
             console.log('Dashboard command received:', data.command);
             // Handle any commands from dashboard if needed
           }
-          
-          // Ignore all other messages - we're only sending to dashboard
           
         } catch (error) {
           console.error('Error handling WebSocket message:', error);
@@ -335,11 +381,22 @@
     const modeStatus = document.getElementById('modeStatus');
     
     function updateModeUI() {
-      // Live streaming mode
-      modeToggle.textContent = 'Refresh Stream';
-      modeToggle.style.background = '#1e40af';
-      modeStatus.textContent = '✓ Live streaming to dashboard';
-      modeStatus.style.color = '#10b981';
+      const isMobile = isMobileDevice();
+      const isViewer = isDashboardViewer();
+      
+      if (isMobile && !isViewer) {
+        // Mobile streaming mode
+        modeToggle.textContent = 'Refresh Stream';
+        modeToggle.style.background = '#1e40af';
+        modeStatus.textContent = '✓ Mobile streaming to dashboard';
+        modeStatus.style.color = '#10b981';
+      } else {
+        // Desktop viewing mode
+        modeToggle.textContent = 'Refresh View';
+        modeToggle.style.background = '#059669';
+        modeStatus.textContent = '✓ Desktop viewer - waiting for mobile streams';
+        modeStatus.style.color = '#10b981';
+      }
     }
     
     modeToggle.addEventListener('click', () => {
