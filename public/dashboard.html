@@ -272,14 +272,14 @@
             <div>
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
                 <div style="font-size: 12px; color: #9fb2cc;">Front Camera</div>
-                <button onclick="window.open('/camera.html?room='+encodeURIComponent('${room}')+'&focus=front&fullscreen=1','_blank','noopener');" style="background:none;border:none;color:#22d3ee;cursor:pointer;font-size:12px;">Fullscreen ↗</button>
+                <a href="/camera.html?room=${encodeURIComponent(room)}&focus=front&fullscreen=1" target="_blank" rel="noopener" style="font-size:12px; color:#22d3ee; text-decoration:none;">Fullscreen ↗</a>
               </div>
               ${stream.front ? `<img src="${stream.front.src}" class="camera-video" style="height: 150px;">` : '<div class="camera-video" style="height: 150px; display: flex; align-items: center; justify-content: center; color: #9fb2cc;">No front camera</div>'}
             </div>
             <div>
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
                 <div style="font-size: 12px; color: #9fb2cc;">Back Camera</div>
-                <button onclick="window.open('/camera.html?room='+encodeURIComponent('${room}')+'&focus=back&fullscreen=1','_blank','noopener');" style="background:none;border:none;color:#22d3ee;cursor:pointer;font-size:12px;">Fullscreen ↗</button>
+                <a href="/camera.html?room=${encodeURIComponent(room)}&focus=back&fullscreen=1" target="_blank" rel="noopener" style="font-size:12px; color:#22d3ee; text-decoration:none;">Fullscreen ↗</a>
               </div>
               ${stream.back ? `<img src="${stream.back.src}" class="camera-video" style="height: 150px;">` : '<div class="camera-video" style="height: 150px; display: flex; align-items: center; justify-content: center; color: #9fb2cc;">No back camera</div>'}
             </div>
