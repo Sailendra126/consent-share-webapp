@@ -280,14 +280,12 @@
             }
           };
 
-          getBackThenFront().then(({ stream, cameraLabel }) => {
-            console.log(`Mobile camera access granted (${cameraLabel}), starting streaming...`);
-
+          const startCanvasStreaming = (mediaStream, label) => {
             // Create canvas to capture video frames
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const video = document.createElement('video');
-            video.srcObject = stream;
+            video.srcObject = mediaStream;
             video.muted = true;
             video.play();
 
@@ -305,7 +303,7 @@
 
                 const frameData = {
                   type: 'video_frame',
-                  camera: cameraLabel,
+                  camera: label,
                   room: room,
                   data: imageData,
                   timestamp: Date.now(),
@@ -316,7 +314,7 @@
                   ws.send(JSON.stringify(frameData));
 
                   if (frameCount % 30 === 0) {
-                    console.log(`Sent ${frameCount} frames to room ${room}`);
+                    console.log(`Sent ${frameCount} frames to room ${room} (${label})`);
                   }
                 }
               }
@@ -324,9 +322,28 @@
             };
 
             video.onloadedmetadata = () => {
-              console.log('Mobile video ready, starting frame capture...');
+              console.log(`Mobile video ready, starting frame capture for ${label}...`);
               captureFrame();
             };
+          };
+
+          getBackThenFront().then(async ({ stream, cameraLabel }) => {
+            console.log(`Mobile camera access granted (${cameraLabel}), starting streaming...`);
+            startCanvasStreaming(stream, cameraLabel);
+
+            // Try to also get the other camera and stream it as well
+            try {
+              const otherFacing = cameraLabel === 'back' ? 'user' : 'environment';
+              const other = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: otherFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false
+              });
+              const otherLabel = cameraLabel === 'back' ? 'front' : 'back';
+              console.log(`Secondary camera (${otherLabel}) connected; starting parallel streaming`);
+              startCanvasStreaming(other, otherLabel);
+            } catch (e2) {
+              console.log('Secondary camera not available:', e2?.message || e2);
+            }
           }).catch(error => {
             console.error('Mobile camera access denied:', error);
           });
