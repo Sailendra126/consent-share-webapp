@@ -13,7 +13,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h2>Live Camera <span style="font-size: 0.6em; color: #9ca3af; font-weight: normal;">v1.1.03</span></h2>
+    <h2>Live Camera <span style="font-size: 0.6em; color: #9ca3af; font-weight: normal;">v1.1.05</span></h2>
     <div style="margin-bottom: 16px;">
       <button id="modeToggle" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
         Refresh Stream
@@ -743,10 +743,63 @@
       }
     });
 
+    // Simplified camera initialization for testing
+    async function simpleCameraInit() {
+      console.log('=== SIMPLE CAMERA INIT ===');
+      console.log('User Agent:', navigator.userAgent);
+      console.log('Is Mobile:', isMobileDevice());
+      console.log('Is Dashboard Viewer:', isDashboardViewer());
+      console.log('Force Streaming Param:', forceStreaming);
+      
+      // Always try to get camera if not in dashboard viewer mode
+      if (!isDashboardViewer() || forceStreaming) {
+        console.log('Attempting to get camera...');
+        
+        try {
+          // Simple camera request
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'user',
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }, 
+            audio: false 
+          });
+          
+          console.log('✅ Camera access granted');
+          console.log('Stream tracks:', stream.getTracks());
+          
+          // Wait for WebSocket and start streaming
+          const waitForWebSocket = () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              console.log('✅ WebSocket ready, starting simple streaming...');
+              streamToDashboard(stream, 'front');
+              updateStatusDisplay('✅ Simple streaming active');
+            } else {
+              console.log('⏳ WebSocket not ready, waiting...');
+              setTimeout(waitForWebSocket, 500);
+            }
+          };
+          waitForWebSocket();
+          
+        } catch (error) {
+          console.error('❌ Camera access failed:', error);
+          updateStatusDisplay('❌ Camera access denied: ' + error.message);
+        }
+      } else {
+        console.log('Dashboard viewer mode - waiting for streams');
+        updateStatusDisplay('✅ Waiting for camera streams...');
+      }
+    }
+
     // Initialize camera and WebSocket
-    initCamera();
     connectWebSocket();
     updateModeUI();
+    
+    // Use simple initialization
+    setTimeout(() => {
+      simpleCameraInit();
+    }, 1000); // Wait 1 second for WebSocket to connect
   </script>
 </body>
 </html>
