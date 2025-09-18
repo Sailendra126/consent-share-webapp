@@ -21,6 +21,9 @@
       <button id="testStream" style="padding: 8px 16px; background: #dc2626; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">
         Test Stream
       </button>
+      <button id="debugStream" style="padding: 8px 16px; background: #7c3aed; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">
+        Debug Stream
+      </button>
       <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Initializing camera system...</span>
     </div>
     <div class="row">
@@ -265,6 +268,8 @@
         return;
       }
       
+      console.log(`Starting to stream ${cameraType} camera to dashboard...`);
+      
       // Create a canvas to capture video frames
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -275,27 +280,42 @@
       canvas.width = 640;
       canvas.height = 480;
       
+      let frameCount = 0;
+      
       // Capture frames and send to dashboard
       const captureFrame = () => {
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = canvas.toDataURL('image/jpeg', 0.8);
           
+          frameCount++;
+          
           // Send frame to dashboard
-          ws.send(JSON.stringify({
+          const frameData = {
             type: 'video_frame',
             camera: cameraType,
             room: room,
             data: imageData,
-            timestamp: Date.now()
-          }));
+            timestamp: Date.now(),
+            frameCount: frameCount
+          };
+          
+          ws.send(JSON.stringify(frameData));
+          
+          if (frameCount % 30 === 0) { // Log every 30 frames
+            console.log(`Sent ${frameCount} frames for ${cameraType} camera`);
+          }
         }
         requestAnimationFrame(captureFrame);
       };
       
       video.onloadedmetadata = () => {
-        console.log(`Streaming ${cameraType} camera to dashboard`);
+        console.log(`Streaming ${cameraType} camera to dashboard - video ready`);
         captureFrame();
+      };
+      
+      video.onerror = (error) => {
+        console.error(`Error with ${cameraType} video:`, error);
       };
     }
     
@@ -396,6 +416,20 @@
           timestamp: Date.now()
         }));
         console.log('Ping message sent');
+        
+        // Send a test message to verify WebSocket is working
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'test_message',
+              room: room,
+              device: isMobileDevice() ? 'mobile' : 'desktop',
+              message: 'WebSocket connection test',
+              timestamp: Date.now()
+            }));
+            console.log('Test message sent');
+          }
+        }, 1000);
       };
       
       ws.onerror = (error) => {
@@ -421,6 +455,11 @@
           // Handle ping messages
           if (data.type === 'ping') {
             console.log('Ping received from:', data.device, 'room:', data.room);
+          }
+          
+          // Handle test messages
+          if (data.type === 'test_message') {
+            console.log('Test message received from:', data.device, 'room:', data.room, 'message:', data.message);
           }
           
           // Handle dashboard commands
@@ -478,11 +517,13 @@
       front.src = testImage;
       front.style.display = 'block';
       front.style.background = 'transparent';
+      front.innerHTML = '';
       console.log('Front video src set to test image');
       
       back.src = testImage;
       back.style.display = 'block';
       back.style.background = 'transparent';
+      back.innerHTML = '';
       console.log('Back video src set to test image');
       
       updateStatusDisplay('✓ Test image displayed');
@@ -504,6 +545,40 @@
         console.log('WebSocket not ready');
         updateStatusDisplay('✗ WebSocket not ready');
       }
+    });
+    
+    // Debug stream button for debugging
+    document.getElementById('debugStream').addEventListener('click', () => {
+      console.log('Debug stream clicked...');
+      
+      // Show debug information
+      console.log('=== DEBUG INFO ===');
+      console.log('Room:', room);
+      console.log('WebSocket state:', ws ? ws.readyState : 'No WebSocket');
+      console.log('Is mobile:', isMobileDevice());
+      console.log('Is dashboard viewer:', isDashboardViewer());
+      console.log('Should stream:', isMobileDevice() && !isDashboardViewer());
+      console.log('Local stream:', localStream);
+      console.log('Front video element:', front);
+      console.log('Back video element:', back);
+      
+      // Try to get camera for debugging
+      if (isMobileDevice()) {
+        console.log('Mobile device - trying to get camera...');
+        navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          .then(stream => {
+            console.log('Camera access granted for debugging');
+            console.log('Stream tracks:', stream.getTracks());
+            streamToDashboard(stream, 'front');
+          })
+          .catch(error => {
+            console.error('Camera access denied:', error);
+          });
+      } else {
+        console.log('Desktop device - cannot get camera');
+      }
+      
+      updateStatusDisplay('✓ Debug info logged to console');
     });
 
     // Initialize camera and WebSocket
