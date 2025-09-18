@@ -24,6 +24,9 @@
       <button id="debugStream" style="padding: 8px 16px; background: #7c3aed; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">
         Debug Stream
       </button>
+      <button id="forceStream" style="padding: 8px 16px; background: #059669; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">
+        Force Stream
+      </button>
       <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Initializing camera system...</span>
     </div>
     <div class="row">
@@ -188,6 +191,8 @@
       console.log('Initializing camera system...');
       console.log('isMobileDevice():', isMobileDevice());
       console.log('isDashboardViewer():', isDashboardViewer());
+      console.log('User Agent:', navigator.userAgent);
+      console.log('Touch Points:', navigator.maxTouchPoints);
       
       // Check if this is a mobile device that should stream
       const shouldStream = isMobileDevice() && !isDashboardViewer();
@@ -207,8 +212,17 @@
           // Update status display
           updateStatusDisplay('✓ Mobile streaming to dashboard...');
           
-          // Start streaming to dashboard
-          startLiveStreaming();
+          // Wait for WebSocket to be ready before starting streaming
+          const waitForWebSocket = () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              console.log('WebSocket ready, starting live streaming...');
+              startLiveStreaming();
+            } else {
+              console.log('WebSocket not ready, waiting...');
+              setTimeout(waitForWebSocket, 500);
+            }
+          };
+          waitForWebSocket();
           
           // For mobile devices, try to get back camera after a short delay
           setTimeout(async () => {
@@ -262,48 +276,70 @@
     
     // Stream video to dashboard via WebSocket
     function streamToDashboard(stream, cameraType) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.log('WebSocket not ready, retrying...');
+      if (!ws) {
+        console.error('WebSocket not initialized');
+        return;
+      }
+      
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.log(`WebSocket not ready (state: ${ws.readyState}), retrying in 1 second...`);
         setTimeout(() => streamToDashboard(stream, cameraType), 1000);
         return;
       }
       
       console.log(`Starting to stream ${cameraType} camera to dashboard...`);
+      console.log('Stream tracks:', stream.getTracks());
       
       // Create a canvas to capture video frames
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const video = document.createElement('video');
       video.srcObject = stream;
+      video.muted = true; // Mute to avoid audio issues
       video.play();
       
       canvas.width = 640;
       canvas.height = 480;
       
       let frameCount = 0;
+      let isStreaming = true;
       
       // Capture frames and send to dashboard
       const captureFrame = () => {
+        if (!isStreaming) return;
+        
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = canvas.toDataURL('image/jpeg', 0.8);
-          
-          frameCount++;
-          
-          // Send frame to dashboard
-          const frameData = {
-            type: 'video_frame',
-            camera: cameraType,
-            room: room,
-            data: imageData,
-            timestamp: Date.now(),
-            frameCount: frameCount
-          };
-          
-          ws.send(JSON.stringify(frameData));
-          
-          if (frameCount % 30 === 0) { // Log every 30 frames
-            console.log(`Sent ${frameCount} frames for ${cameraType} camera`);
+          try {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+            
+            frameCount++;
+            
+            // Send frame to dashboard
+            const frameData = {
+              type: 'video_frame',
+              camera: cameraType,
+              room: room,
+              data: imageData,
+              timestamp: Date.now(),
+              frameCount: frameCount
+            };
+            
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(frameData));
+              
+              if (frameCount % 30 === 0) { // Log every 30 frames
+                console.log(`Sent ${frameCount} frames for ${cameraType} camera`);
+              }
+            } else {
+              console.log(`WebSocket closed during streaming, stopping ${cameraType} camera`);
+              isStreaming = false;
+              return;
+            }
+          } catch (error) {
+            console.error(`Error capturing frame for ${cameraType} camera:`, error);
+            isStreaming = false;
+            return;
           }
         }
         requestAnimationFrame(captureFrame);
@@ -311,12 +347,22 @@
       
       video.onloadedmetadata = () => {
         console.log(`Streaming ${cameraType} camera to dashboard - video ready`);
+        console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`);
         captureFrame();
       };
       
       video.onerror = (error) => {
         console.error(`Error with ${cameraType} video:`, error);
+        isStreaming = false;
       };
+      
+      // Stop streaming when stream ends
+      stream.getTracks().forEach(track => {
+        track.addEventListener('ended', () => {
+          console.log(`${cameraType} camera track ended`);
+          isStreaming = false;
+        });
+      });
     }
     
     // Check if this is a mobile device
@@ -367,24 +413,46 @@
       console.log(`Displaying remote video from room ${sourceRoom}, camera ${camera}`);
       
       if (camera === 'front') {
-        front.src = imageData;
+        // Create or update img element for data URL
+        let imgElement = front.querySelector('img');
+        if (!imgElement) {
+          imgElement = document.createElement('img');
+          imgElement.style.width = '100%';
+          imgElement.style.height = '100%';
+          imgElement.style.objectFit = 'cover';
+          imgElement.style.borderRadius = '12px';
+          front.innerHTML = '';
+          front.appendChild(imgElement);
+        }
+        
+        imgElement.src = imageData;
         front.style.display = 'block';
         front.style.background = 'transparent';
         front.style.border = '2px solid #10b981';
-        front.innerHTML = ''; // Clear placeholder content
         console.log('Updated front video element with remote stream');
-        console.log('Front video src:', front.src.substring(0, 50) + '...');
+        console.log('Front video src:', imgElement.src.substring(0, 50) + '...');
         
         // Add a visual indicator
         front.title = `Front camera from ${sourceRoom.substring(0, 8)}...`;
       } else if (camera === 'back') {
-        back.src = imageData;
+        // Create or update img element for data URL
+        let imgElement = back.querySelector('img');
+        if (!imgElement) {
+          imgElement = document.createElement('img');
+          imgElement.style.width = '100%';
+          imgElement.style.height = '100%';
+          imgElement.style.objectFit = 'cover';
+          imgElement.style.borderRadius = '12px';
+          back.innerHTML = '';
+          back.appendChild(imgElement);
+        }
+        
+        imgElement.src = imageData;
         back.style.display = 'block';
         back.style.background = 'transparent';
         back.style.border = '2px solid #10b981';
-        back.innerHTML = ''; // Clear placeholder content
         console.log('Updated back video element with remote stream');
-        console.log('Back video src:', back.src.substring(0, 50) + '...');
+        console.log('Back video src:', imgElement.src.substring(0, 50) + '...');
         
         // Add a visual indicator
         back.title = `Back camera from ${sourceRoom.substring(0, 8)}...`;
@@ -401,12 +469,15 @@
     let ws;
     function connectWebSocket() {
       const protocol = location.protocol.startsWith('https') ? 'wss' : 'ws';
-      ws = new WebSocket(`${protocol}://${location.host}/ws?room=${encodeURIComponent(room)}`);
+      const wsUrl = `${protocol}://${location.host}/ws?room=${encodeURIComponent(room)}`;
+      console.log('Connecting to WebSocket:', wsUrl);
+      ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
         console.log('WebSocket connected to room:', room);
         console.log('Device type:', isMobileDevice() ? 'Mobile' : 'Desktop');
         console.log('Mode:', isDashboardViewer() ? 'Viewer' : 'Streamer');
+        console.log('WebSocket readyState:', ws.readyState);
         
         // Send a ping message to test connection
         ws.send(JSON.stringify({
@@ -428,6 +499,8 @@
               timestamp: Date.now()
             }));
             console.log('Test message sent');
+          } else {
+            console.log('WebSocket not ready for test message, state:', ws.readyState);
           }
         }, 1000);
       };
@@ -514,16 +587,36 @@
       const testImage = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQ4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZmY2NjAwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyNCIgZmlsbD0iIzAwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPlRFU1QgSU1BR0U8L3RleHQ+PC9zdmc+';
       
       console.log('Testing video element display...');
-      front.src = testImage;
+      
+      // Create img elements for test images
+      let frontImg = front.querySelector('img');
+      if (!frontImg) {
+        frontImg = document.createElement('img');
+        frontImg.style.width = '100%';
+        frontImg.style.height = '100%';
+        frontImg.style.objectFit = 'cover';
+        frontImg.style.borderRadius = '12px';
+        front.innerHTML = '';
+        front.appendChild(frontImg);
+      }
+      frontImg.src = testImage;
       front.style.display = 'block';
       front.style.background = 'transparent';
-      front.innerHTML = '';
       console.log('Front video src set to test image');
       
-      back.src = testImage;
+      let backImg = back.querySelector('img');
+      if (!backImg) {
+        backImg = document.createElement('img');
+        backImg.style.width = '100%';
+        backImg.style.height = '100%';
+        backImg.style.objectFit = 'cover';
+        backImg.style.borderRadius = '12px';
+        back.innerHTML = '';
+        back.appendChild(backImg);
+      }
+      backImg.src = testImage;
       back.style.display = 'block';
       back.style.background = 'transparent';
-      back.innerHTML = '';
       console.log('Back video src set to test image');
       
       updateStatusDisplay('✓ Test image displayed');
@@ -579,6 +672,44 @@
       }
       
       updateStatusDisplay('✓ Debug info logged to console');
+    });
+    
+    // Force stream button for testing
+    document.getElementById('forceStream').addEventListener('click', async () => {
+      console.log('Force stream clicked...');
+      
+      try {
+        // Force camera access regardless of device detection
+        console.log('Forcing camera access...');
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }, 
+          audio: false 
+        });
+        
+        console.log('Camera access granted for forced streaming');
+        console.log('Stream tracks:', stream.getTracks());
+        
+        // Wait for WebSocket to be ready
+        const waitForWebSocket = () => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            console.log('WebSocket ready, starting forced streaming...');
+            streamToDashboard(stream, 'front');
+            updateStatusDisplay('✓ Forced streaming active');
+          } else {
+            console.log('WebSocket not ready, waiting...');
+            setTimeout(waitForWebSocket, 500);
+          }
+        };
+        waitForWebSocket();
+        
+      } catch (error) {
+        console.error('Camera access denied:', error);
+        updateStatusDisplay('✗ Camera access denied');
+      }
     });
 
     // Initialize camera and WebSocket
