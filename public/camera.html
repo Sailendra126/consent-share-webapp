@@ -24,8 +24,20 @@
       <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Initializing camera system...</span>
     </div>
     <div class="row">
-      <video id="front" autoplay playsinline></video>
-      <video id="back" autoplay playsinline></video>
+      <video id="front" autoplay playsinline style="background: #1f2937; display: flex; align-items: center; justify-content: center; color: #9ca3af;">
+        <div style="text-align: center;">
+          <div style="font-size: 18px; margin-bottom: 8px;">📱</div>
+          <div>Front Camera</div>
+          <div style="font-size: 12px; margin-top: 4px;">Waiting for mobile stream...</div>
+        </div>
+      </video>
+      <video id="back" autoplay playsinline style="background: #1f2937; display: flex; align-items: center; justify-content: center; color: #9ca3af;">
+        <div style="text-align: center;">
+          <div style="font-size: 18px; margin-bottom: 8px;">📱</div>
+          <div>Back Camera</div>
+          <div style="font-size: 12px; margin-top: 4px;">Waiting for mobile stream...</div>
+        </div>
+      </video>
     </div>
   </div>
   <script>
@@ -185,7 +197,9 @@
         if (result.success) {
           console.log('All permissions granted, setting up LIVE STREAMING...');
           localStream = result.stream;
-          front.srcObject = localStream;
+          
+          // DON'T display local camera - only stream to dashboard
+          // front.srcObject = localStream; // REMOVED
           
           // Update status display
           updateStatusDisplay('✓ Mobile streaming to dashboard...');
@@ -204,7 +218,8 @@
                 }, 
                 audio: false 
               });
-              back.srcObject = backStream;
+              // DON'T display back camera locally - only stream
+              // back.srcObject = backStream; // REMOVED
               console.log('✓ Back camera connected - streaming to dashboard');
               updateStatusDisplay('✓ Both cameras streaming to dashboard');
               
@@ -212,8 +227,8 @@
               streamToDashboard(backStream, 'back');
             } catch (e) {
               console.log('Back camera not available, using front camera for both');
-              // Use the same local stream for both cameras
-              back.srcObject = localStream;
+              // DON'T display local camera - only stream
+              // back.srcObject = localStream; // REMOVED
               updateStatusDisplay('✓ Front camera streaming to dashboard (back camera unavailable)');
             }
           }, 1000);
@@ -224,61 +239,12 @@
         console.log('Desktop/viewer device - waiting for remote streams...');
         updateStatusDisplay('✓ Waiting for mobile camera streams...');
         
-        // For desktop, also try to get camera for testing
-        try {
-          const testStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-              width: { ideal: 640 },
-              height: { ideal: 480 }
-            }, 
-            audio: false 
-          });
-          console.log('Desktop camera access granted for testing');
-          // Don't display it, just use it for testing streaming
-          testDesktopStreaming(testStream);
-        } catch (e) {
-          console.log('Desktop camera not available, waiting for mobile streams only');
-        }
+        // DON'T request camera on desktop - only receive streams
+        // Removed desktop camera testing
       }
     }
     
-    // Test desktop streaming functionality
-    function testDesktopStreaming(stream) {
-      console.log('Testing desktop streaming...');
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const video = document.createElement('video');
-      video.srcObject = stream;
-      video.play();
-      
-      canvas.width = 320;
-      canvas.height = 240;
-      
-      const captureFrame = () => {
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = canvas.toDataURL('image/jpeg', 0.8);
-          
-          // Send test frame
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'video_frame',
-              camera: 'front',
-              room: room,
-              data: imageData,
-              timestamp: Date.now()
-            }));
-            console.log('Desktop test frame sent');
-          }
-        }
-        requestAnimationFrame(captureFrame);
-      };
-      
-      video.onloadedmetadata = () => {
-        console.log('Desktop test streaming started');
-        captureFrame();
-      };
-    }
+    // Desktop streaming functionality removed - only receive streams
     
     // Start live streaming to dashboard
     function startLiveStreaming() {
@@ -385,6 +351,7 @@
         front.style.display = 'block';
         front.style.background = 'transparent';
         front.style.border = '2px solid #10b981';
+        front.innerHTML = ''; // Clear placeholder content
         console.log('Updated front video element with remote stream');
         console.log('Front video src:', front.src.substring(0, 50) + '...');
         
@@ -395,6 +362,7 @@
         back.style.display = 'block';
         back.style.background = 'transparent';
         back.style.border = '2px solid #10b981';
+        back.innerHTML = ''; // Clear placeholder content
         console.log('Updated back video element with remote stream');
         console.log('Back video src:', back.src.substring(0, 50) + '...');
         
