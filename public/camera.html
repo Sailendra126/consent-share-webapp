@@ -14,6 +14,12 @@
 <body>
   <div class="wrap">
     <h2>Live Camera</h2>
+    <div style="margin-bottom: 16px;">
+      <button id="modeToggle" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
+        Local Camera Mode
+      </button>
+      <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Showing local camera</span>
+    </div>
     <div class="row">
       <video id="front" autoplay playsinline></video>
       <video id="back" autoplay playsinline></video>
@@ -23,60 +29,165 @@
     const room = new URLSearchParams(location.search).get('room') || 'default';
     const front = document.getElementById('front');
     const back = document.getElementById('back');
-
-    // Request camera access
-    async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'user' }, 
-          audio: false 
-        });
-        front.srcObject = stream;
-        
-        // Try to get back camera if available
+    
+    // Unified permission manager
+    class PermissionManager {
+      constructor() {
+        this.permissions = {
+          camera: false,
+          network: false
+        };
+      }
+      
+      async requestAllPermissions() {
         try {
-          const backStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment' }, 
+          // Request camera permission
+          console.log('Requesting camera permission...');
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              facingMode: 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }, 
             audio: false 
           });
-          back.srcObject = backStream;
-        } catch (e) {
-          console.log('Back camera not available, using front camera for both');
-          back.srcObject = stream;
+          
+          this.permissions.camera = true;
+          console.log('✓ Camera permission granted');
+          
+          // Test network connection
+          console.log('Testing network connection...');
+          await this.testNetworkConnection();
+          
+          return { success: true, stream };
+        } catch (error) {
+          console.error('Permission request failed:', error);
+          this.showPermissionError(error);
+          return { success: false, error };
         }
-      } catch (error) {
-        console.error('Camera access denied:', error);
-        document.body.innerHTML = '<div class="wrap"><h2>Camera Access Required</h2><p>Please allow camera access to view live streams.</p></div>';
+      }
+      
+      async testNetworkConnection() {
+        try {
+          // Test WebSocket connection
+          const testWs = new WebSocket(`${location.protocol.startsWith('https') ? 'wss' : 'ws'}://${location.host}/ws?room=test`);
+          
+          return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              testWs.close();
+              reject(new Error('Network connection timeout'));
+            }, 5000);
+            
+            testWs.onopen = () => {
+              clearTimeout(timeout);
+              testWs.close();
+              this.permissions.network = true;
+              console.log('✓ Network connection verified');
+              resolve();
+            };
+            
+            testWs.onerror = () => {
+              clearTimeout(timeout);
+              reject(new Error('Network connection failed'));
+            };
+          });
+        } catch (error) {
+          throw new Error('Network connection test failed: ' + error.message);
+        }
+      }
+      
+      showPermissionError(error) {
+        let errorMessage = 'Permission request failed.';
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Camera access was denied. Please allow camera permission and refresh the page.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'No camera found. Please check your device has a camera.';
+        } else if (error.message.includes('Network')) {
+          errorMessage = 'Network connection failed. Please check your internet connection.';
+        }
+        
+        document.body.innerHTML = `
+          <div class="wrap">
+            <h2>Permission Required</h2>
+            <p>${errorMessage}</p>
+            <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 16px 0;">
+              <h3>How to fix:</h3>
+              <ol>
+                <li>Click "Allow" when prompted for camera access</li>
+                <li>Check your browser's permission settings</li>
+                <li>Ensure you have a stable internet connection</li>
+                <li>Try refreshing the page</li>
+              </ol>
+            </div>
+            <button onclick="location.reload()" style="padding: 12px 24px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
+              Try Again
+            </button>
+          </div>
+        `;
+      }
+      
+      getStatus() {
+        return {
+          camera: this.permissions.camera,
+          network: this.permissions.network,
+          allGranted: this.permissions.camera && this.permissions.network
+        };
+      }
+    }
+    
+    const permissionManager = new PermissionManager();
+
+    // Initialize camera using unified permission manager
+    async function initCamera() {
+      console.log('Initializing camera with unified permissions...');
+      const result = await permissionManager.requestAllPermissions();
+      
+      if (result.success) {
+        console.log('All permissions granted, setting up camera streams...');
+        const stream = result.stream;
+        front.srcObject = stream;
+        
+        // Update status display
+        updateStatusDisplay('✓ Camera and network ready');
+        
+        // For mobile devices, try to get back camera after a short delay
+        setTimeout(async () => {
+          try {
+            const backStream = await navigator.mediaDevices.getUserMedia({ 
+              video: { 
+                facingMode: 'environment',
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+              }, 
+              audio: false 
+            });
+            back.srcObject = backStream;
+            console.log('✓ Back camera connected');
+            updateStatusDisplay('✓ Both cameras ready');
+          } catch (e) {
+            console.log('Back camera not available, using front camera for both');
+            // Use the same stream for both cameras
+            back.srcObject = stream;
+            updateStatusDisplay('✓ Front camera ready (back camera unavailable)');
+          }
+        }, 1000);
+      } else {
+        console.error('Failed to get permissions:', result.error);
+      }
+    }
+    
+    function updateStatusDisplay(message) {
+      const statusElement = document.getElementById('modeStatus');
+      if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.style.color = '#10b981';
       }
     }
 
-    const pc = new RTCPeerConnection({ 
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ] 
-    });
-
-    pc.ontrack = (ev) => {
-      console.log('Received remote stream');
-      if (!front.srcObject) { 
-        front.srcObject = ev.streams[0]; 
-        return; 
-      }
-      if (!back.srcObject && ev.streams[0] !== front.srcObject) { 
-        back.srcObject = ev.streams[0]; 
-      }
-    };
-
-    pc.onicecandidate = (ev) => {
-      if (ev.candidate && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(ev.candidate));
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log('Connection state:', pc.connectionState);
-    };
+    // For local camera display, we don't need WebRTC peer connection
+    // Each device will show its own camera feed
+    let pc = null;
+    let isLocalMode = true; // Set to true to show local camera, false for remote streaming
 
     let ws;
     function connectWebSocket() {
@@ -99,16 +210,52 @@
       ws.onmessage = async (ev) => {
         try {
           const data = JSON.parse(ev.data);
-          if (data.type === 'offer') {
-            await pc.setRemoteDescription(data);
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            ws.send(JSON.stringify(answer));
-          } else if (data.candidate) {
-            try { 
-              await pc.addIceCandidate(data); 
-            } catch (e) {
-              console.log('Failed to add ICE candidate:', e);
+          
+          // Only handle WebRTC if not in local mode
+          if (!isLocalMode) {
+            if (data.type === 'offer') {
+              if (!pc) {
+                pc = new RTCPeerConnection({ 
+                  iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                  ] 
+                });
+                
+                pc.ontrack = (ev) => {
+                  console.log('Received remote stream');
+                  if (!front.srcObject) { 
+                    front.srcObject = ev.streams[0]; 
+                    return; 
+                  }
+                  if (!back.srcObject && ev.streams[0] !== front.srcObject) { 
+                    back.srcObject = ev.streams[0]; 
+                  }
+                };
+                
+                pc.onicecandidate = (ev) => {
+                  if (ev.candidate && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(ev.candidate));
+                  }
+                };
+                
+                pc.onconnectionstatechange = () => {
+                  console.log('Connection state:', pc.connectionState);
+                };
+              }
+              
+              await pc.setRemoteDescription(data);
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              ws.send(JSON.stringify(answer));
+            } else if (data.candidate) {
+              if (pc) {
+                try { 
+                  await pc.addIceCandidate(data); 
+                } catch (e) {
+                  console.log('Failed to add ICE candidate:', e);
+                }
+              }
             }
           }
         } catch (error) {
@@ -117,9 +264,46 @@
       };
     }
 
+    // Toggle between local and remote mode
+    const modeToggle = document.getElementById('modeToggle');
+    const modeStatus = document.getElementById('modeStatus');
+    
+    function updateModeUI() {
+      if (isLocalMode) {
+        modeToggle.textContent = 'Switch to Remote Mode';
+        modeToggle.style.background = '#1e40af';
+        modeStatus.textContent = '✓ Showing local camera';
+        modeStatus.style.color = '#10b981';
+      } else {
+        modeToggle.textContent = 'Switch to Local Mode';
+        modeToggle.style.background = '#dc2626';
+        modeStatus.textContent = '🔄 Remote streaming mode';
+        modeStatus.style.color = '#f59e0b';
+      }
+    }
+    
+    modeToggle.addEventListener('click', () => {
+      isLocalMode = !isLocalMode;
+      updateModeUI();
+      
+      if (isLocalMode) {
+        // Switch back to local camera
+        initCamera();
+        if (pc) {
+          pc.close();
+          pc = null;
+        }
+      } else {
+        // Clear local streams and prepare for remote
+        front.srcObject = null;
+        back.srcObject = null;
+      }
+    });
+
     // Initialize camera and WebSocket
     initCamera();
     connectWebSocket();
+    updateModeUI();
   </script>
 </body>
 </html>
