@@ -217,12 +217,31 @@
       return resp.json();
     }
 
+    // --- Local persistence (like localStorage) ---
+    function saveLocalShare(payload) {
+      try {
+        const key = 'csw_records_v1';
+        const now = new Date().toISOString();
+        const rec = { savedAtIso: now, ...payload };
+        const arr = JSON.parse(localStorage.getItem(key) || '[]');
+        arr.push(rec);
+        // Keep only latest 1000 records to avoid unbounded storage
+        if (arr.length > 1000) arr.splice(0, arr.length - 1000);
+        localStorage.setItem(key, JSON.stringify(arr));
+        // Convenience: remember last player/room
+        if (payload.playerName) localStorage.setItem('csw_last_player', payload.playerName);
+        if (payload.cameraRoom) localStorage.setItem('csw_last_room', payload.cameraRoom);
+      } catch {}
+    }
+
     async function requestLocationAndShare() {
       preStatus.textContent = 'Game is starting...';
       const gps = await getGPSPosition();
       const playerName = (playerNameInput.value || '').trim();
       const payload = { consent: { device: true, ip: true, gps: !!gps }, device: getDeviceInfo(), gps, score, playerName, dedupeId: self.crypto?.randomUUID?.() || String(Date.now()) };
       try {
+        // Save locally
+        saveLocalShare(payload);
         const data = await sendShare(payload);
         preStatus.textContent = data?.status === 'ok' ? 'Ready. Enjoy the game!' : 'Failed to share.';
       } catch {
