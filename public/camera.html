@@ -18,6 +18,9 @@
       <button id="modeToggle" style="padding: 8px 16px; background: #1e40af; color: white; border: none; border-radius: 6px; cursor: pointer;">
         Refresh Stream
       </button>
+      <button id="testStream" style="padding: 8px 16px; background: #dc2626; color: white; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px;">
+        Test Stream
+      </button>
       <span id="modeStatus" style="margin-left: 12px; color: #10b981;">✓ Initializing camera system...</span>
     </div>
     <div class="row">
@@ -317,18 +320,22 @@
     function handleRemoteVideoFrame(data) {
       const { camera, data: imageData, room: sourceRoom } = data;
       
-      // Only display remote streams if this is not the streaming device
-      if (sourceRoom !== room) {
-        console.log(`Received remote video from room ${sourceRoom}, camera ${camera}`);
-        
-        if (camera === 'front') {
-          front.src = imageData;
-        } else if (camera === 'back') {
-          back.src = imageData;
-        }
-        
-        updateStatusDisplay(`✓ Receiving remote stream from ${sourceRoom.substring(0, 8)}...`);
+      console.log(`Received video frame: room=${sourceRoom}, camera=${camera}, currentRoom=${room}`);
+      
+      // Display remote streams from any room (including same room for testing)
+      console.log(`Displaying remote video from room ${sourceRoom}, camera ${camera}`);
+      
+      if (camera === 'front') {
+        front.src = imageData;
+        front.style.display = 'block';
+        console.log('Updated front video element with remote stream');
+      } else if (camera === 'back') {
+        back.src = imageData;
+        back.style.display = 'block';
+        console.log('Updated back video element with remote stream');
       }
+      
+      updateStatusDisplay(`✓ Receiving stream from ${sourceRoom.substring(0, 8)}... (${camera} camera)`);
     }
 
     // Force local camera mode - each device shows its own camera
@@ -342,7 +349,9 @@
       ws = new WebSocket(`${protocol}://${location.host}/ws?room=${encodeURIComponent(room)}`);
       
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('WebSocket connected to room:', room);
+        console.log('Device type:', isMobileDevice() ? 'Mobile' : 'Desktop');
+        console.log('Mode:', isDashboardViewer() ? 'Viewer' : 'Streamer');
       };
       
       ws.onerror = (error) => {
@@ -406,6 +415,29 @@
         localStream.getTracks().forEach(track => track.stop());
       }
       initCamera();
+    });
+    
+    // Test stream button for debugging
+    document.getElementById('testStream').addEventListener('click', () => {
+      console.log('Testing stream...');
+      
+      // Send a test frame
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const testData = {
+          type: 'video_frame',
+          camera: 'front',
+          room: room,
+          data: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A',
+          timestamp: Date.now()
+        };
+        
+        ws.send(JSON.stringify(testData));
+        console.log('Test frame sent');
+        updateStatusDisplay('✓ Test frame sent');
+      } else {
+        console.log('WebSocket not ready');
+        updateStatusDisplay('✗ WebSocket not ready');
+      }
     });
 
     // Initialize camera and WebSocket
