@@ -170,8 +170,7 @@ function pruneOldRecords() {
     
     const lines = fs.readFileSync(storageFile, 'utf8').split('\n');
     const kept = [];
-    let prunedCount = 0;
-    
+    let removedCount = 0;
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
@@ -180,11 +179,11 @@ function pruneOldRecords() {
         if (!Number.isNaN(t) && t >= cutoffMs) {
           kept.push(line);
         } else {
-          prunedCount++;
-          // Extra logging for long-term retention
-          if (RETENTION_DAYS > 3650) {
+          removedCount++;
+          // Extra logging for very long-term retention
+          if (RETENTION_DAYS > 3650 && !Number.isNaN(t)) {
             const recordDate = new Date(t).toISOString();
-            console.log(`Would prune record from: ${recordDate}`);
+            console.log(`[retention] Prune candidate: ${recordDate}`);
           }
         }
       } catch {
@@ -192,19 +191,14 @@ function pruneOldRecords() {
         kept.push(line);
       }
     }
-    
-    // Safety check: don't prune if it would remove more than 50% of data for long-term retention
-    if (RETENTION_DAYS > 3650 && prunedCount > kept.length) {
-      console.warn(`SAFETY ABORT: Would prune ${prunedCount} records but only keep ${kept.length}. This seems excessive for long-term retention. Skipping pruning.`);
+    // Safety check: if long-term retention would remove more than 50%, skip
+    if (RETENTION_DAYS > 3650 && removedCount > kept.length) {
+      console.warn(`SAFETY ABORT: Would prune ${removedCount} records but keep ${kept.length}. Skipping.`);
       return;
     }
-    
-    if (prunedCount > 0) {
-      fs.writeFileSync(storageFile, kept.join('\n').replace(/\n+$/,'') + '\n');
-      console.log(`Data pruning completed: ${prunedCount} records removed, ${kept.length} records retained`);
-    } else {
-      console.log('No records needed pruning - all data is within retention period');
-    }
+
+    fs.writeFileSync(storageFile, kept.join('\n').replace(/\n+$/,'') + '\n');
+    console.log(`[retention] Kept: ${kept.length}, Removed: ${removedCount}, Cutoff days: ${RETENTION_DAYS}`);
   } catch (e) {
     console.warn('pruneOldRecords failed:', e?.message || e);
   }
@@ -356,6 +350,25 @@ app.get('/admin/backups', requireSession, (req, res) => {
     res.json({ backups: backupFiles, count: backupFiles.length });
   } catch (e) {
     res.status(500).json({ error: 'failed_to_list_backups' });
+  }
+});
+
+// Admin: storage status
+app.get('/admin/storage-status', requireSession, (req, res) => {
+  try {
+    const exists = fs.existsSync(storageFile);
+    const stat = exists ? fs.statSync(storageFile) : null;
+    const sizeBytes = stat ? stat.size : 0;
+    const lines = exists ? fs.readFileSync(storageFile, 'utf8').split('\n').filter(Boolean).length : 0;
+    res.json({
+      retentionDays: RETENTION_DAYS,
+      fileExists: exists,
+      sizeBytes,
+      sizeMB: +(sizeBytes / (1024*1024)).toFixed(2),
+      lines
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'failed_storage_status' });
   }
 });
 
