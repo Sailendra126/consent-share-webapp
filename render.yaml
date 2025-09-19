@@ -11,7 +11,7 @@ services:
       - key: NODE_VERSION
         value: 18
       - key: RETENTION_DAYS
-        value: 36500
+        value: 0
     disk:
       name: data
       mountPath: /opt/render/project/src/storage
