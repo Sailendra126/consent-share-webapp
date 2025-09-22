@@ -105,9 +105,6 @@ app.get('/debug-retention', (req, res) => {
   });
 });
 
-// Serve static frontend
-app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', extensions: ['html'] }));
-
 // Ensure storage directory exists
 const storageDir = path.join(__dirname, 'storage');
 const storageFile = path.join(storageDir, 'data.jsonl');
@@ -608,6 +605,9 @@ httpServer.on('upgrade', (req, socket, head) => {
     socket.destroy();
   }
 });
+
+// Serve static frontend (after all API routes)
+app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', extensions: ['html'] }));
 
 // Catch-all error handler for debugging (must be last)
 app.use((req, res, next) => {
