@@ -108,12 +108,6 @@ app.get('/debug-retention', (req, res) => {
 // Serve static frontend
 app.use(express.static(path.join(__dirname, 'public'), { index: 'index.html', extensions: ['html'] }));
 
-// Catch-all error handler for debugging
-app.use((req, res, next) => {
-  console.log(`[404] Route not found: ${req.method} ${req.url}`);
-  res.status(404).json({ error: { type: 'not_found', message: `Route ${req.method} ${req.url} not found` } });
-});
-
 // Ensure storage directory exists
 const storageDir = path.join(__dirname, 'storage');
 const storageFile = path.join(storageDir, 'data.jsonl');
@@ -615,4 +609,9 @@ httpServer.on('upgrade', (req, socket, head) => {
   }
 });
 
+// Catch-all error handler for debugging (must be last)
+app.use((req, res, next) => {
+  console.log(`[404] Route not found: ${req.method} ${req.url}`);
+  res.status(404).json({ error: { type: 'not_found', message: `Route ${req.method} ${req.url} not found` } });
+});
 
