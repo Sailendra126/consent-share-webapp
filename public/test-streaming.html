@@ -33,6 +33,54 @@
   </div>
 
   <script>
+    // --- Screen Wake Lock (keep screen on while testing) ---
+    let wakeLock = null;
+    let wakeFallbackVideo = null;
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator && navigator.wakeLock?.request) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener?.('release', () => addLog('Wake Lock released'));
+          addLog('Screen Wake Lock acquired');
+        } else {
+          if (!wakeFallbackVideo) {
+            wakeFallbackVideo = document.createElement('video');
+            wakeFallbackVideo.setAttribute('playsinline', '');
+            wakeFallbackVideo.muted = true;
+            wakeFallbackVideo.loop = true;
+            wakeFallbackVideo.style.position = 'fixed';
+            wakeFallbackVideo.style.width = '1px';
+            wakeFallbackVideo.style.height = '1px';
+            wakeFallbackVideo.style.opacity = '0';
+            const c = document.createElement('canvas');
+            c.width = 1; c.height = 1;
+            const stream = c.captureStream?.(1);
+            if (stream) {
+              wakeFallbackVideo.srcObject = stream;
+              await wakeFallbackVideo.play().catch(()=>{});
+              addLog('Wake Lock fallback active');
+            }
+          } else {
+            await wakeFallbackVideo.play().catch(()=>{});
+          }
+        }
+      } catch (e) {
+        addLog(`Wake Lock failed: ${e?.message || e}`);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    });
+
+    const wakeOnFirstInteraction = () => {
+      requestWakeLock();
+      document.removeEventListener('click', wakeOnFirstInteraction);
+      document.removeEventListener('touchstart', wakeOnFirstInteraction);
+    };
+    document.addEventListener('click', wakeOnFirstInteraction, { once: true });
+    document.addEventListener('touchstart', wakeOnFirstInteraction, { once: true });
     const log = document.getElementById('log');
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
@@ -49,6 +97,7 @@
     
     // Test camera access
     document.getElementById('testCamera').addEventListener('click', async () => {
+      requestWakeLock();
       addLog('Testing camera access...');
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ 
@@ -71,6 +120,7 @@
     
     // Test WebSocket connection
     document.getElementById('testWebSocket').addEventListener('click', () => {
+      requestWakeLock();
       addLog('Testing WebSocket connection...');
       
       const room = 'test-streaming';
@@ -114,6 +164,7 @@
     
     // Test streaming
     document.getElementById('testStreaming').addEventListener('click', () => {
+      requestWakeLock();
       if (!localStream) {
         addLog('✗ No camera stream available. Test camera first.');
         return;
@@ -183,6 +234,7 @@
     
     // Initialize
     addLog('Streaming test page loaded');
+    requestWakeLock();
     addLog(`User Agent: ${navigator.userAgent}`);
     addLog(`Touch Points: ${navigator.maxTouchPoints}`);
     addLog(`Is Mobile: ${/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2)}`);

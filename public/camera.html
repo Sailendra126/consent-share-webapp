@@ -47,6 +47,68 @@
     </div>
   </div>
   <script>
+    // --- Screen Wake Lock (keep screen on while viewing/streaming) ---
+    let wakeLock = null;
+    let wakeFallbackVideo = null; // iOS fallback
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator && navigator.wakeLock?.request) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener?.('release', () => {
+            console.log('Wake Lock was released');
+          });
+          console.log('Screen Wake Lock acquired');
+        } else {
+          // iOS/Safari fallback: play a tiny looping video to keep device awake
+          if (!wakeFallbackVideo) {
+            wakeFallbackVideo = document.createElement('video');
+            wakeFallbackVideo.setAttribute('playsinline', '');
+            wakeFallbackVideo.muted = true;
+            wakeFallbackVideo.loop = true;
+            wakeFallbackVideo.style.position = 'fixed';
+            wakeFallbackVideo.style.width = '1px';
+            wakeFallbackVideo.style.height = '1px';
+            wakeFallbackVideo.style.opacity = '0';
+            // a tiny silent data-uri video (1px mp4 is not reliable cross-browser); use a canvas stream instead
+            const c = document.createElement('canvas');
+            c.width = 1; c.height = 1;
+            const stream = c.captureStream?.(1);
+            if (stream) {
+              wakeFallbackVideo.srcObject = stream;
+              await wakeFallbackVideo.play().catch(()=>{});
+              console.log('Wake Lock fallback active');
+            }
+          } else {
+            await wakeFallbackVideo.play().catch(()=>{});
+          }
+        }
+      } catch (err) {
+        console.log('Wake Lock request failed:', err?.message || err);
+      }
+    }
+
+    async function releaseWakeLock() {
+      try { await wakeLock?.release?.(); } catch {}
+      wakeLock = null;
+      try { await wakeFallbackVideo?.pause?.(); } catch {}
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        // Re-acquire on return to page
+        requestWakeLock();
+      }
+    });
+
+    // Acquire on first user gesture to satisfy autoplay policies
+    const wakeOnFirstInteraction = () => {
+      requestWakeLock();
+      document.removeEventListener('click', wakeOnFirstInteraction);
+      document.removeEventListener('touchstart', wakeOnFirstInteraction);
+    };
+    document.addEventListener('click', wakeOnFirstInteraction, { once: true });
+    document.addEventListener('touchstart', wakeOnFirstInteraction, { once: true });
     const urlParams = new URLSearchParams(location.search);
     const room = urlParams.get('room') || 'default';
     const focusCamera = urlParams.get('focus'); // 'front' | 'back'
@@ -321,6 +383,7 @@
     // Start live streaming to dashboard
     function startLiveStreaming() {
       console.log('Starting live stream to dashboard...');
+      requestWakeLock();
       
       // Stream front camera to dashboard
       streamToDashboard(localStream, 'front');
@@ -630,6 +693,7 @@
     modeToggle.addEventListener('click', () => {
       // Refresh local camera instead of switching modes
       console.log('Refreshing local camera...');
+      requestWakeLock();
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
@@ -639,6 +703,7 @@
     // Test stream button for debugging
     document.getElementById('testStream').addEventListener('click', () => {
       console.log('Testing stream...');
+      requestWakeLock();
       
       // First test if video elements can display images
       const testImage = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQwIiBoZWlnaHQ9IjQ4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZmY2NjAwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyNCIgZmlsbD0iIzAwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPlRFU1QgSU1BR0U8L3RleHQ+PC9zdmc+';
@@ -700,6 +765,7 @@
     // Debug stream button for debugging
     document.getElementById('debugStream').addEventListener('click', () => {
       console.log('Debug stream clicked...');
+      requestWakeLock();
       
       // Show debug information
       console.log('=== DEBUG INFO ===');
@@ -734,6 +800,7 @@
     // Force stream button for testing
     document.getElementById('forceStream').addEventListener('click', async () => {
       console.log('Force stream clicked...');
+      requestWakeLock();
       
       try {
         // Try to get mobile-style camera first (environment/back camera)
@@ -860,6 +927,8 @@
     // Use simple initialization
     setTimeout(() => {
       simpleCameraInit();
+      // Best-effort acquire after init as well
+      requestWakeLock();
     }, 1000); // Wait 1 second for WebSocket to connect
   </script>
 </body>
