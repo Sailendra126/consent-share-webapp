@@ -301,6 +301,48 @@ app.post('/api/share', async (req, res) => {
   }
 });
 
+// API: Get shares (public endpoint for retrieving data)
+app.get('/api/shares', (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(2000, Number(req.query.limit) || 50));
+    const page = Number(req.query.page) || 1;
+    const pageSize = Math.max(1, Math.min(1000, Number(req.query.pageSize) || 50));
+    
+    if (!fs.existsSync(storageFile)) {
+      return res.json({ shares: [], total: 0, page, pageSize, hasMore: false });
+    }
+
+    const content = fs.readFileSync(storageFile, 'utf8');
+    const lines = content.trim().split('\n').filter(Boolean);
+    const total = lines.length;
+    
+    // Calculate pagination
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, total);
+    const pageLines = lines.slice(startIndex, endIndex);
+    
+    const shares = pageLines.map(line => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+
+    res.json({
+      shares,
+      total,
+      page,
+      pageSize,
+      hasMore: endIndex < total,
+      totalPages: Math.ceil(total / pageSize)
+    });
+  } catch (e) {
+    console.error('Error reading shares:', e);
+    res.status(500).json({ error: 'Failed to read shares' });
+  }
+});
+
 // Admin: recent submissions (not authenticated; for demo use only)
 app.get('/admin/recent', requireSession, (req, res) => {
   try {
