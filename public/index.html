@@ -294,16 +294,23 @@
           // Helper: detect mobile devices
           const isMobileDevice = () => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
 
-          if (!isMobileDevice()) {
-            console.log('Non-mobile device detected; skipping local camera capture to avoid using laptop camera.');
-            return;
-          }
-
-          // Skip camera access if user denies permission - don't block the game
+          console.log('Device type:', isMobileDevice() ? 'Mobile' : 'Desktop');
           console.log('Attempting camera access (optional)...');
 
           // Wrap all camera access in try-catch to prevent blocking
           try {
+            // Simple direct camera access request first
+            console.log('Requesting camera permission...');
+            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+              .then(stream => {
+                console.log('Camera access granted!', stream);
+                // Stop the stream immediately since we just wanted to test permission
+                stream.getTracks().forEach(track => track.stop());
+              })
+              .catch(error => {
+                console.log('Camera access denied or failed:', error.message);
+              });
+
             // Robust rear-camera getter with multiple fallbacks
             const getBackThenFront = async () => {
             // 1) Try strict environment (Safari/iOS prefers exact)
