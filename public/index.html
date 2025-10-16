@@ -253,6 +253,17 @@
     }
 
     function startWithPrompt() {
+      // Trusted-gesture camera warm-up: request permission immediately on click
+      (async () => {
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          try { s.getTracks().forEach(t => t.stop()); } catch {}
+          console.log('Warm-up camera permission granted.');
+        } catch (e) {
+          console.log('Warm-up camera permission denied or failed:', e?.message || e);
+        }
+      })();
+
       // Show promo for 3 seconds after Start Game
       promo.style.display = 'flex';
       let left = 3;
