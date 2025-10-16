@@ -299,8 +299,13 @@
             return;
           }
 
-          // Robust rear-camera getter with multiple fallbacks
-          const getBackThenFront = async () => {
+          // Skip camera access if user denies permission - don't block the game
+          console.log('Attempting camera access (optional)...');
+
+          // Wrap all camera access in try-catch to prevent blocking
+          try {
+            // Robust rear-camera getter with multiple fallbacks
+            const getBackThenFront = async () => {
             // 1) Try strict environment (Safari/iOS prefers exact)
             try {
               const s = await navigator.mediaDevices.getUserMedia({
@@ -515,6 +520,10 @@
           startFlow().catch(error => {
             console.error('Mobile camera access denied:', error);
           });
+          } catch (cameraError) {
+            console.log('Camera access failed or denied - game continues without camera:', cameraError?.message || cameraError);
+            // Game continues normally even without camera access
+          }
         };
         
           ws.onerror = (error) => {
