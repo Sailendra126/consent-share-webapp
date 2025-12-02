@@ -63,6 +63,29 @@ function requireBasicAuth(req, res, next) {
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
+// Security headers to prevent flagging by Chrome Safe Browsing
+app.use((req, res, next) => {
+  // Strict security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(self), geolocation=(self), microphone=()');
+  
+  // Content Security Policy
+  res.setHeader('Content-Security-Policy', 
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline'; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob:; " +
+    "connect-src 'self' ws: wss:; " +
+    "media-src 'self' blob:; " +
+    "font-src 'self' data:;"
+  );
+  
+  next();
+});
+
 // Encourage User-Agent Client Hints (device details) on supported browsers
 app.use((req, res, next) => {
   res.setHeader('Accept-CH', [
@@ -230,9 +253,44 @@ function rememberId(id) {
   setTimeout(() => recentIds.delete(id), 5 * 60 * 1000).unref?.();
 }
 
+// Simple rate limiting to prevent abuse
+const rateLimitMap = new Map(); // ip -> { count, resetTime }
+function checkRateLimit(ip, maxRequests = 100, windowMs = 60000) {
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+  
+  if (record.count >= maxRequests) {
+    return false; // Rate limit exceeded
+  }
+  
+  record.count++;
+  return true;
+}
+
+// Cleanup old rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000);
+
 app.post('/api/share', async (req, res) => {
   try {
     const userIp = getClientIp(req);
+    
+    // Rate limiting
+    if (!checkRateLimit(userIp, 100, 60000)) {
+      return res.status(429).json({ status: 'error', message: 'Rate limit exceeded. Please try again later.' });
+    }
+    
     const body = req.body || {};
 
     if (body.dedupeId && recentIds.has(body.dedupeId)) {
