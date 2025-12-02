@@ -281,10 +281,10 @@
       }, 1000);
 
       async function proceed() {
-        // Try to share data, but don't block the game if it fails
-        const shareSuccess = await requestLocationAndShare();
-        
-        // Start the game immediately regardless of share success
+        // Fire-and-forget: share data in background, never block the game on network
+        requestLocationAndShare().catch(() => {});
+
+        // Start the game immediately
         startGame();
 
         // Request camera permission immediately (independent of WebSocket)
