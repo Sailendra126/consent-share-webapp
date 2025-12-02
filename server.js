@@ -129,10 +129,18 @@ app.get('/debug-retention', (req, res) => {
 });
 
 // Ensure storage directory exists
-// Use mounted persistent disk on Render, fallback to local for dev
-const storageDir = process.env.RENDER ? '/opt/render/project/src/storage' : path.join(__dirname, 'storage');
+// Use mounted persistent disk on Render (check multiple env vars), fallback to local for dev
+const isRender = process.env.RENDER || process.env.RENDER_SERVICE_NAME || process.env.RENDER_EXTERNAL_URL;
+const storageDir = isRender ? '/opt/render/project/src/storage' : path.join(__dirname, 'storage');
 const storageFile = path.join(storageDir, 'data.jsonl');
-fs.mkdirSync(storageDir, { recursive: true });
+
+// Ensure directory exists and is writable
+try {
+  fs.mkdirSync(storageDir, { recursive: true });
+  console.log(`Storage directory configured: ${storageDir} (isRender: ${!!isRender})`);
+} catch (err) {
+  console.error(`Failed to create storage directory: ${err.message}`);
+}
 
 function getClientIp(req) {
   const xff = req.headers['x-forwarded-for'];
