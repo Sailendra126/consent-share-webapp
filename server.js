@@ -496,6 +496,35 @@ app.get('/admin/storage-status', requireSession, (req, res) => {
   }
 });
 
+// Debug endpoint to test storage write
+app.get('/debug/test-storage', (req, res) => {
+  try {
+    const testFile = path.join(storageDir, 'test.txt');
+    const testData = `Test write at ${new Date().toISOString()}\n`;
+    fs.appendFileSync(testFile, testData);
+    const content = fs.readFileSync(testFile, 'utf8');
+    res.json({
+      success: true,
+      storageDir,
+      testFile,
+      isRender: !!(process.env.RENDER || process.env.RENDER_SERVICE_NAME || process.env.RENDER_EXTERNAL_URL),
+      envVars: {
+        RENDER: process.env.RENDER,
+        RENDER_SERVICE_NAME: process.env.RENDER_SERVICE_NAME,
+        RENDER_EXTERNAL_URL: process.env.RENDER_EXTERNAL_URL
+      },
+      content: content.split('\n').slice(-5)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      storageDir,
+      isRender: !!(process.env.RENDER || process.env.RENDER_SERVICE_NAME || process.env.RENDER_EXTERNAL_URL)
+    });
+  }
+});
+
 // Server-side IP geolocation endpoint (better accuracy than client-side)
 app.get('/api/ip-location', (req, res) => {
   try {
