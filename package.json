@@ -11,7 +11,8 @@
     "express": "^4.19.2",
     "cookie-parser": "^1.4.6",
     "nodemailer": "^6.9.13",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "geoip-lite": "^1.4.10"
   },
   "engines": {
     "node": ">=18"

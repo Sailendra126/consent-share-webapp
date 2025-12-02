@@ -4,6 +4,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const nodemailer = require('nodemailer');
 const { WebSocketServer } = require('ws');
+const geoip = require('geoip-lite');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -492,6 +493,41 @@ app.get('/admin/storage-status', requireSession, (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: 'failed_storage_status' });
+  }
+});
+
+// Server-side IP geolocation endpoint (better accuracy than client-side)
+app.get('/api/ip-location', (req, res) => {
+  try {
+    const userIp = getClientIp(req);
+    
+    // For localhost/private IPs, return null
+    if (!userIp || userIp === '::1' || userIp.startsWith('127.') || userIp.startsWith('192.168.') || userIp.startsWith('10.')) {
+      return res.json({ 
+        ip: userIp, 
+        location: null, 
+        message: 'Local IP - no geolocation available' 
+      });
+    }
+    
+    const geo = geoip.lookup(userIp);
+    if (geo) {
+      return res.json({
+        ip: userIp,
+        latitude: geo.ll[0],
+        longitude: geo.ll[1],
+        city: geo.city,
+        country: geo.country,
+        timezone: geo.timezone,
+        accuracyMeters: 1000, // geoip-lite can be accurate to ~1-5km in urban areas
+        source: 'server-geoip'
+      });
+    }
+    
+    res.json({ ip: userIp, location: null, message: 'No geolocation data for this IP' });
+  } catch (error) {
+    console.error('IP location lookup failed:', error);
+    res.status(500).json({ error: 'geolocation_failed' });
   }
 });
 
