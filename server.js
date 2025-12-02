@@ -106,7 +106,8 @@ app.get('/debug-retention', (req, res) => {
 });
 
 // Ensure storage directory exists
-const storageDir = path.join(__dirname, 'storage');
+// Use mounted persistent disk on Render, fallback to local for dev
+const storageDir = process.env.RENDER ? '/opt/render/project/src/storage' : path.join(__dirname, 'storage');
 const storageFile = path.join(storageDir, 'data.jsonl');
 fs.mkdirSync(storageDir, { recursive: true });
 
